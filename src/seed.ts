@@ -1,5 +1,5 @@
 import type { Client as NotionClient } from "@notionhq/client";
-import { buildDate } from "./utils.ts";
+import { buildDate, truncateTitle } from "./utils.ts";
 
 type Promemoria = {
   pkDocente: string;
@@ -12,52 +12,59 @@ type Promemoria = {
   flgVisibileFamiglia: string; // "S" o "N"
 };
 
-function truncateTitle(text: string, max = 30): string {
-  if (!text) return "";
-  return text.length > max ? text.slice(0, max) + "..." : text;
+type Registro = {
+  datEvento: string;
+  isFirmato: boolean;
+  desUrl: string | null;
+  pkDocente: string;
+  compiti: {
+    compito: string;
+    dataConsegna: string;
+  }[];
+  datGiorno: string;
+  docente: string;
+  materia: string;
+  pkMateria: string;
+  attivita: string | null;
+  ora: number;
 }
 
-// Funzione per popolare i promemoria
 export async function seedPromemoriaRecords(
   client: NotionClient,
   databaseId: string,
   promemoria: Promemoria[]
 ) {
+  const latest = await client.databases.query({
+    database_id: databaseId,
+    sorts: [
+      {
+        property: "datEvento",
+        direction: "descending",
+      },
+    ],
+    page_size: 1,
+  });
+
+  let lastDate: string | null = null;
+
+  if (latest.results.length > 0) {
+    const page: any = latest.results[0];
+    lastDate = page.properties.datEvento?.date?.start || null;
+  }
+
+  console.log("Ultima data presente:", lastDate);
+
   for (const p of promemoria) {
+    const eventoDate = buildDate(p.datEvento);
+
+    if (!eventoDate?.start) continue;
+    if (lastDate && eventoDate.start <= lastDate) {
+      console.log(`Evento ${eventoDate.start} già sincronizzato, skip.`);
+      continue;
+    }
 
     const fullText = p.desAnnotazioni || "";
     const shortTitle = truncateTitle(fullText);
-    const eventoDate = buildDate(p.datEvento);
-
-    // 🔍 Controllo duplicati su datEvento + desAnnotazioni
-    if (eventoDate?.start) {
-      const query = await client.databases.query({
-        database_id: databaseId,
-        filter: {
-          and: [
-            {
-              property: "datEvento",
-              date: {
-                equals: eventoDate.start,
-              },
-            },
-            {
-              property: "desAnnotazioni",
-              title: {
-                equals: shortTitle,
-              },
-            },
-          ],
-        },
-      });
-
-      if (query.results.length > 0) {
-        console.log(
-          `Evento "${shortTitle}" del ${eventoDate.start} già presente, salto.`
-        );
-        continue;
-      }
-    }
 
     const properties: Record<string, any> = {
       desAnnotazioni: {
@@ -83,10 +90,22 @@ export async function seedPromemoriaRecords(
         date: buildDate(p.datGiorno),
       },
       oraInizio: {
-        rich_text: [{ text: { content: p.oraInizio || "00:00" } }],
+        rich_text: [
+          {
+            text: {
+              content: p.oraInizio != "00:00" ? p.oraInizio : "07:50",
+            },
+          },
+        ],
       },
       oraFine: {
-        rich_text: [{ text: { content: p.oraFine || "00:00" } }],
+        rich_text: [
+          {
+            text: {
+              content: p.oraFine != "00:00" ? p.oraFine : "13:10",
+            },
+          },
+        ],
       },
     };
 
@@ -110,5 +129,92 @@ export async function seedPromemoriaRecords(
         },
       ],
     });
+  }
+}
+
+export async function seedCompitiRecords(
+  client: NotionClient,
+  databaseId: string,
+  registro: Registro[]
+) {
+  const latest = await client.databases.query({
+    database_id: databaseId,
+    sorts: [
+      {
+        property: "dataConsegna",
+        direction: "descending",
+      },
+    ],
+    page_size: 1,
+  });
+
+  let lastDate: string | null = null;
+
+  if (latest.results.length > 0) {
+    const page: any = latest.results[0];
+    lastDate = page.properties.dataConsegna?.date?.start || null;
+  }
+
+  console.log("Ultima data compiti presente:", lastDate);
+
+  for (const r of registro) {
+
+    for (const c of r.compiti || []) {
+
+      const consegnaDate = buildDate(c.dataConsegna);
+      if (!consegnaDate?.start) continue;
+
+      if (lastDate && consegnaDate.start <= lastDate) {
+        console.log(`Compito ${consegnaDate.start} già sincronizzato, skip.`);
+        continue;
+      }
+
+      const fullText = c.compito || "";
+      const shortTitle = truncateTitle(fullText);
+
+      const properties: Record<string, any> = {
+        compito: {
+          title: [
+            {
+              text: { content: shortTitle },
+            },
+          ],
+        },
+        dataConsegna: {
+          date: consegnaDate,
+        },
+        materia: {
+          rich_text: [{ text: { content: r.materia || "" } }],
+        },
+        docente: {
+          rich_text: [{ text: { content: r.docente || "" } }],
+        },
+        ora: {
+          number: r.ora || 0,
+        },
+      };
+
+      await client.pages.create({
+        parent: { database_id: databaseId },
+        properties,
+        children: [
+          {
+            object: "block",
+            type: "paragraph",
+            paragraph: {
+              rich_text: [
+                {
+                  type: "text",
+                  text: {
+                    content: fullText,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+    }
   }
 }

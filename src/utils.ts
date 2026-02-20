@@ -40,6 +40,7 @@ export function buildDate(dateStr?: string): { start: string } | undefined {
   return { start: isoDate };
 }
 
-export function addIfDefined(obj: Record<string, any>, key: string, value: any) {
-  if (value !== undefined && value !== null) obj[key] = value;
+export function truncateTitle(text: string, max = 30): string {
+  if (!text) return "";
+  return text.length > max ? text.slice(0, max) + "..." : text;
 }

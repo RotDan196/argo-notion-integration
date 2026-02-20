@@ -1,21 +1,29 @@
 import "dotenv/config";
 import { Client as ArgoClient } from "./argo-api/Client.ts";
 import { Client as NotionClient } from "@notionhq/client";
-import { setupPromemoriaDatabase } from "./setup.ts";
-import { seedPromemoriaRecords } from "./seed.ts";
+import { setupCompitiDatabase, setupPromemoriaDatabase } from "./setup.ts";
+import { seedCompitiRecords, seedPromemoriaRecords } from "./seed.ts";
+import { ok } from "node:assert";
+
+const NOTION_TOKEN = process.env.NOTION_TOKEN;
+const NOTION_PARENT_PAGE = process.env.NOTION_PARENT_PAGE_ID as string;
+
+ok(NOTION_TOKEN, "No NOTION_TOKEN provided");
+ok(NOTION_PARENT_PAGE, "No NOTION_PARENT_PAGE provided");
 
 const argoClient = new ArgoClient({});
-const notionClient = new NotionClient({ auth: process.env.NOTION_TOKEN });
+const notionClient = new NotionClient({ auth: NOTION_TOKEN });
 
 try {
 	console.log("🔐 Login Argo in corso...\n");
 	await argoClient.login();
 	console.log("✓ Login Argo completato!\n");
 
-    console.log(argoClient.dashboard?.promemoria[0]);
+    const promemoria_id = await setupPromemoriaDatabase(notionClient, rootPage);
+	const compiti_id = await setupCompitiDatabase(notionClient, rootPage);
 
-    const database_id = await setupPromemoriaDatabase(notionClient, process.env.NOTION_PAGE_ID as string);
-    await seedPromemoriaRecords(notionClient, database_id, argoClient.dashboard?.promemoria as any);
+    await seedPromemoriaRecords(notionClient, promemoria_id, argoClient.dashboard?.promemoria as any);
+	await seedCompitiRecords(notionClient, compiti_id, argoClient.dashboard?.registro as any)
 
 } catch (err) {
 	console.error(
