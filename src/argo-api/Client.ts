@@ -3,27 +3,19 @@ import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { cwd, env } from "node:process";
-import {
-	fetch,
-	interceptors,
-	Pool,
-	type Dispatcher,
-	type RequestInfo,
-	type RequestInit,
-	type RetryHandler,
-} from "undici";
-import type CacheHandler from "undici/types/cache-interceptor";
-import { BaseClient } from "./BaseClient.ts";
-import type { ClientOptions, Credentials } from "./types/index.ts";
-import { getCode } from "./util/getCode.ts";
-import { importData } from "./util/importData.ts";
-import { writeToFile } from "./util/writeToFile.ts";
-import { jar } from "./util/cookies.ts"
+import { fetch, interceptors, Pool } from "undici";
+import type { Dispatcher, RequestInfo, RequestInit, RetryHandler } from "undici";
+import { BaseClient } from "./BaseClient.js";
+import type { ClientOptions, Credentials } from "./types/index.js";
+import { getCode } from "./util/getCode.js";
+import { importData } from "./util/importData.js";
+import { writeToFile } from "./util/writeToFile.js";
+import { jar } from "./util/cookies.js";
 
 const factory = (origin: import("url").URL, opts: object): CookieClient =>
 	new CookieClient(origin, {
 		...opts,
-		cookies: { jar },
+		cookies: { jar: jar as any },
 	});
 
 /**
@@ -61,7 +53,7 @@ export class Client extends BaseClient {
 			/**
 			 * Cache options
 			 */
-			cacheOptions?: CacheHandler.CacheOptions;
+			cacheOptions?: any;
 		} = {},
 	) {
 		super(options);

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ReadData } from "../types";
+import type { ReadData } from "../types/index.js";
 
 /**
  * Importa dei dati salvati in un file.
@@ -13,7 +13,7 @@ export const importData = async <T extends keyof ReadData>(
 ) => {
 	try {
 		return JSON.parse(
-			await readFile(join(path, `${name}.json`), {
+			await readFile(join(path, `${String(name)}.json`), {
 				encoding: "utf8",
 			}),
 		) as ReadData[T];

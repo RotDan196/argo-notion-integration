@@ -1,5 +1,5 @@
 import type { JSONSchemaType } from "ajv";
-import Ajv from "ajv";
+import { Ajv } from "ajv";
 import { mkdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,8 +21,8 @@ import type {
 	APIToken,
 	APIVotiScrutinio,
 	APIWhat,
-} from "../types";
-import { writeToFile } from "../util/writeToFile";
+} from "../types/index.js";
+import { writeToFile } from "../util/writeToFile.js";
 import {
 	allRequired,
 	any,
@@ -37,7 +37,7 @@ import {
 	number,
 	record,
 	string,
-} from "./utilityTypes";
+} from "./utilityTypes.js";
 
 const ajv = new Ajv({
 	allErrors: true,

@@ -4,7 +4,7 @@ import type {
 	APIOperation,
 	APIProfilo,
 	APIToken,
-} from "./apiTypes";
+} from "./apiTypes.js";
 
 export type ObjectJson = {
 	[key: string]: Json;

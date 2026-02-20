@@ -1,4 +1,4 @@
-import type { APIOperation } from "../types";
+import type { APIOperation } from "../types/index.js";
 
 /**
  * Gestisci dei dati dell'API contenenti un'operazione.

@@ -1,11 +1,11 @@
 import "dotenv/config";
-import { Client } from "./Client.ts";
+import { Client } from "./Client.js";
 
 console.time();
 const client = new Client({ debug: true });
 
 await client.login();
-const uid = client.dashboard?.bacheca.find((e) => e.listaAllegati.length)
+const uid = client.dashboard?.bacheca.find((e: any) => e.listaAllegati.length)
 	?.listaAllegati[0]?.pk;
 
 console.log(client.dashboard?.promemoria);

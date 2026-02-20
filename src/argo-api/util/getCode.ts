@@ -2,10 +2,10 @@ import { CookieAgent } from "http-cookie-agent/undici";
 import { ok } from "node:assert";
 import { URL, URLSearchParams } from "node:url";
 import { interceptors, request } from "undici";
-import type { Credentials } from "../types/index.ts";
-import { clientId } from "./Constants.ts";
-import { generateLoginLink } from "./generateLoginLink.ts";
-import { jar } from "./cookies.ts";
+import { Credentials } from "../types/index.js";
+import { clientId } from "./Constants.js";
+import { generateLoginLink } from "./generateLoginLink.js";
+import { jar } from "./cookies.js";
 
 export const getCode = async (credentials: Credentials) => {
   const link = await generateLoginLink();
@@ -14,7 +14,7 @@ export const getCode = async (credentials: Credentials) => {
     allowH2: true,
     autoSelectFamily: true,
     autoSelectFamilyAttemptTimeout: 1,
-    cookies: { jar },
+    cookies: { jar: jar as any },
   }).compose(
     interceptors.retry(),
     interceptors.redirect({ maxRedirections: 0 }),

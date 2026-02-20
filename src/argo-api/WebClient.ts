@@ -1,5 +1,5 @@
-import { BaseClient } from "./BaseClient.ts";
-import type { ClientOptions } from "./types/index.ts";
+import { BaseClient } from "./BaseClient.js";
+import type { ClientOptions } from "./types/index.js";
 
 /**
  * Un client per interagire con l'API

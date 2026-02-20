@@ -25,7 +25,7 @@ import type {
 	LoginLink,
 	ReadyClient,
 	Token,
-} from "./types/index.ts";
+} from "./types/index.js";
 import {
 	clientId,
 	defaultVersion,
@@ -33,7 +33,7 @@ import {
 	getToken,
 	handleOperation,
 	randomString,
-} from "./util/index.ts";
+} from "./util/index.js";
 
 /**
  * Un client per interagire con l'API

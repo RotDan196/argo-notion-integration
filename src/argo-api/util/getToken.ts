@@ -1,5 +1,5 @@
-import type { APIToken, LoginLink } from "../types/index.ts";
-import { clientId } from "./Constants.ts";
+import type { APIToken, LoginLink } from "../types/index.js";
+import { clientId } from "./Constants.js";
 
 export const getToken = async (code: LoginLink & { code: string }) => {
 	const date = new Date();

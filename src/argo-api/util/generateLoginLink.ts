@@ -1,7 +1,7 @@
-import type { LoginLink } from "../types/index.ts";
-import { clientId } from "./Constants.ts";
-import { encryptCodeVerifier } from "./encryptCodeVerifier.ts";
-import { randomString } from "./randomString.ts";
+import type { LoginLink } from "../types/index.js";
+import { clientId } from "./Constants.js";
+import { encryptCodeVerifier } from "./encryptCodeVerifier.js";
+import { randomString } from "./randomString.js";
 
 /**
  * Genera un link per il login tramite browser.

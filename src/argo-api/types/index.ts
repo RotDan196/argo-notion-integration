@@ -1,2 +1,2 @@
-export * from "./apiTypes";
-export * from "./general";
+export * from "./apiTypes.js";
+export * from "./general.js";

@@ -1,3 +1,3 @@
-export * from "./types/index.ts";
-export * from "./util/index.ts";
-export * from "./WebClient.ts";
+export * from "./types/index.js";
+export * from "./util/index.js";
+export * from "./WebClient.js";

@@ -15,7 +15,10 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
 
-    "typeRoots": ["./node_modules/@types"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "typeRoots" : ["./node_modules/@types"],
     "baseUrl": "./src"
   },
   "include": ["src/**/*.ts"]
