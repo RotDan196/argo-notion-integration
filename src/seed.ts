@@ -1,5 +1,5 @@
 import type { Client as NotionClient } from "@notionhq/client";
-import { buildDate, truncateTitle } from "./utils.js";
+import { buildDate, loadExistingTitles, todayISO, truncateTitle } from "./utils.js";
 
 type Promemoria = {
   pkDocente: string;
@@ -34,45 +34,32 @@ export async function seedPromemoriaRecords(
   databaseId: string,
   promemoria: Promemoria[]
 ) {
-  const latest = await client.databases.query({
-    database_id: databaseId,
-    sorts: [
-      {
-        property: "datEvento",
-        direction: "descending",
-      },
-    ],
-    page_size: 1,
-  });
+  const today = todayISO();
+  console.log("Soglia promemoria (oggi):", today);
 
-  let lastDate: string | null = null;
-
-  if (latest.results.length > 0) {
-    const page: any = latest.results[0];
-    lastDate = page.properties.datEvento?.date?.start || null;
-  }
-
-  console.log("Ultima data presente:", lastDate);
+  const existingTitles = await loadExistingTitles(
+    client,
+    databaseId,
+    "desAnnotazioniCompleta"
+  );
 
   for (const p of promemoria) {
     const eventoDate = buildDate(p.datEvento);
-
     if (!eventoDate?.start) continue;
-    if (lastDate && eventoDate.start <= lastDate) {
-      console.log(`Evento ${eventoDate.start} già sincronizzato, skip.`);
-      continue;
-    }
+
+    if (eventoDate.start < today) continue;
 
     const fullText = p.desAnnotazioni || "";
     const shortTitle = truncateTitle(fullText);
 
+    if (existingTitles.has(fullText)) {
+      console.log(`Promemoria "${shortTitle}" già presente, skip.`);
+      continue;
+    }
+
     const properties: Record<string, any> = {
       desAnnotazioni: {
-        title: [
-          {
-            text: { content: shortTitle },
-          },
-        ],
+        title: [{ text: { content: shortTitle } }],
       },
       desAnnotazioniCompleta: {
         rich_text: [{ text: { content: fullText } }],
@@ -123,15 +110,15 @@ export async function seedPromemoriaRecords(
             rich_text: [
               {
                 type: "text",
-                text: {
-                  content: fullText,
-                },
+                text: { content: fullText },
               },
             ],
           },
         },
       ],
     });
+
+    existingTitles.add(shortTitle);
   }
 }
 
@@ -140,48 +127,33 @@ export async function seedCompitiRecords(
   databaseId: string,
   registro: Registro[]
 ) {
-  const latest = await client.databases.query({
-    database_id: databaseId,
-    sorts: [
-      {
-        property: "dataConsegna",
-        direction: "descending",
-      },
-    ],
-    page_size: 1,
-  });
+  const today = todayISO();
+  console.log("Soglia compiti (oggi):", today);
 
-  let lastDate: string | null = null;
-
-  if (latest.results.length > 0) {
-    const page: any = latest.results[0];
-    lastDate = page.properties.dataConsegna?.date?.start || null;
-  }
-
-  console.log("Ultima data compiti presente:", lastDate);
+  const existingTitles = await loadExistingTitles(
+    client,
+    databaseId,
+    "compitoCompleto"
+  );
 
   for (const r of registro) {
-
     for (const c of r.compiti || []) {
-
       const consegnaDate = buildDate(c.dataConsegna);
       if (!consegnaDate?.start) continue;
 
-      if (lastDate && consegnaDate.start <= lastDate) {
-        console.log(`Compito ${consegnaDate.start} già sincronizzato, skip.`);
-        continue;
-      }
+      if (consegnaDate.start < today) continue;
 
       const fullText = c.compito || "";
       const shortTitle = truncateTitle(fullText);
 
+      if (existingTitles.has(fullText)) {
+        console.log(`Compito "${shortTitle}" già presente, skip.`);
+        continue;
+      }
+
       const properties: Record<string, any> = {
         compito: {
-          title: [
-            {
-              text: { content: shortTitle },
-            },
-          ],
+          title: [{ text: { content: shortTitle } }],
         },
         compitoCompleto: {
           rich_text: [{ text: { content: fullText } }],
@@ -211,9 +183,7 @@ export async function seedCompitiRecords(
               rich_text: [
                 {
                   type: "text",
-                  text: {
-                    content: fullText,
-                  },
+                  text: { content: fullText },
                 },
               ],
             },
@@ -221,6 +191,7 @@ export async function seedCompitiRecords(
         ],
       });
 
+      existingTitles.add(shortTitle);
     }
   }
 }
