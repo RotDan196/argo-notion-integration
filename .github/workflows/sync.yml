@@ -1,0 +1,31 @@
+name: Argo → Notion Sync
+
+on:
+  schedule:
+    - cron: '0 7,13,18 * * 1-6'  # alle 7, 13 e 18 dal lunedì al sabato
+  workflow_dispatch:               # permette avvio manuale dal sito
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run sync
+        run: python main.py
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          ARGO_USERNAME: ${{ secrets.ARGO_USERNAME }}
+          ARGO_PASSWORD: ${{ secrets.ARGO_PASSWORD }}
+          ARGO_SCHOOL_CODE: ${{ secrets.ARGO_SCHOOL_CODE }}
+
