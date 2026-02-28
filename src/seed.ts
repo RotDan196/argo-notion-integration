@@ -26,8 +26,13 @@ type Registro = {
   ora: number;
 };
 
-// any per voti/assenze/registro/bacheca così leggiamo i campi reali al runtime
 type AnyRecord = Record<string, any>;
+
+// Utility per pulire i nomi usati nelle Select di Notion (No virgole)
+function sanitizeSelectName(name: string): string {
+  if (!name) return "—";
+  return name.replace(/,/g, "").trim();
+}
 
 // ── Promemoria ────────────────────────────────────────────────────────────────
 export async function seedPromemoriaRecords(
@@ -36,7 +41,6 @@ export async function seedPromemoriaRecords(
   promemoria: Promemoria[]
 ) {
   const today = todayISO();
-  console.log("Soglia promemoria (oggi):", today);
   const existingTitles = await loadExistingTitles(client, databaseId, "desAnnotazioniCompleta");
 
   for (const p of promemoria) {
@@ -47,10 +51,7 @@ export async function seedPromemoriaRecords(
     const fullText   = p.desAnnotazioni || "";
     const shortTitle = truncateTitle(fullText);
 
-    if (existingTitles.has(fullText)) {
-      console.log(`Promemoria "${shortTitle}" già presente, skip.`);
-      continue;
-    }
+    if (existingTitles.has(fullText)) continue;
 
     await client.pages.create({
       parent: { database_id: databaseId },
@@ -82,7 +83,6 @@ export async function seedCompitiRecords(
   registro: Registro[]
 ) {
   const today = todayISO();
-  console.log("Soglia compiti (oggi):", today);
   const existingTitles = await loadExistingTitles(client, databaseId, "compitoCompleto");
 
   for (const r of registro) {
@@ -94,10 +94,7 @@ export async function seedCompitiRecords(
       const fullText   = c.compito || "";
       const shortTitle = truncateTitle(fullText);
 
-      if (existingTitles.has(fullText)) {
-        console.log(`Compito "${shortTitle}" già presente, skip.`);
-        continue;
-      }
+      if (existingTitles.has(fullText)) continue;
 
       await client.pages.create({
         parent: { database_id: databaseId },
@@ -126,23 +123,22 @@ export async function seedVotiRecords(
   databaseId: string,
   voti: AnyRecord[]
 ) {
-  if (voti?.length > 0) console.log("🔍 Campi voto disponibili:", Object.keys(voti[0]));
-
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
   for (const v of voti ?? []) {
     const pk = v.pk ?? v.pkVoto ?? v.id ?? JSON.stringify(v);
     if (existingPks.has(pk)) continue;
 
-    // Prova tutti i possibili nomi del campo voto nell'API Argo
-    const votoRaw = v.decVoto ?? v.votoValore ?? v.voto ?? v.codVoto ?? v.valVoto ?? v.votoDecimale;
-    const votoNum = votoRaw != null ? parseFloat(String(votoRaw)) || 0 : 0;
-    const votoStr = votoRaw != null ? String(votoRaw) : "—";
+    // fix: in base ai log, il voto numerico sta in "valore" o "descrizioneVoto" se è una stringa (es. "8+")
+    const votoRaw = v.valore ?? v.descrizioneVoto ?? 0;
+    // Rimuoviamo i "+" e i "-" per convertire in numero per la colonna Notion
+    const stringVotoClean = String(votoRaw).replace("+", ".25").replace("-", ".75");
+    const votoNum = parseFloat(stringVotoClean) || 0;
 
-    const materia  = v.desMateria ?? v.materia ?? v.desBreveMateria ?? "—";
-    const data     = v.datGiorno ?? v.datVoto ?? v.data ?? "";
-    const tipo     = v.codTipo ?? v.tipoVoto ?? v.desTipo ?? "Scritto";
-    const giudizio = v.desGiudizio ?? v.giudizio ?? v.nota ?? "";
-    const docente  = v.docente ?? v.desDocente ?? v.nomDocente ?? "";
+    const materia  = v.desMateria ?? v.materia ?? v.materiaLight ?? "—";
+    const data     = v.datGiorno ?? v.datEvento ?? "";
+    const tipo     = v.codTipo ?? v.tipoValutazione ?? "Scritto";
+    const giudizio = v.desCommento ?? v.descrizioneProva ?? "";
+    const docente  = v.docente ?? "";
 
     await client.pages.create({
       parent: { database_id: databaseId },
@@ -150,13 +146,13 @@ export async function seedVotiRecords(
         materia:   { title:     [{ text: { content: materia } }] },
         voto:      { number:    votoNum },
         datGiorno: { date:      buildDate(data) ?? null },
-        tipo:      { select:    { name: tipo } },
+        tipo:      { select:    { name: sanitizeSelectName(tipo) } }, // Sanitizza anche qui per sicurezza
         giudizio:  { rich_text: [{ text: { content: giudizio } }] },
         docente:   { rich_text: [{ text: { content: docente } }] },
         pk:        { rich_text: [{ text: { content: pk } }] },
       },
     });
-    console.log(`Voto ${materia} (${votoStr}) aggiunto.`);
+    console.log(`Voto ${materia} (${votoRaw}) aggiunto.`);
     existingPks.add(pk);
   }
 }
@@ -167,30 +163,23 @@ export async function seedAssenzeRecords(
   databaseId: string,
   appello: AnyRecord[]
 ) {
-  if (appello?.length > 0) console.log("🔍 Campi assenza disponibili:", Object.keys(appello[0]));
-
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
   for (const a of appello ?? []) {
     const pk = a.pk ?? a.pkAssenza ?? a.id ?? JSON.stringify(a);
     if (existingPks.has(pk)) continue;
 
-    // Prova tutti i possibili nomi del campo data nell'API Argo
-    const data  = a.datGiorno ?? a.datAssenza ?? a.data ?? a.datEvento ?? "";
-    const tipo  = a.codEvento ?? a.tipoAssenza ?? a.desEvento ?? a.tipo ?? "Assenza";
-    const giust = a.flgGiustificata === "S" || a.giustificata === true || a.flgGiust === "S";
-    const note  = a.desMotivo ?? a.nota ?? a.note ?? "";
+    const data  = a.data ?? a.datEvento ?? "";
+    const tipo  = a.codEvento ?? a.descrizione ?? "Assenza";
+    const giust = a.giustificata === true || a.daGiustificare === false;
+    const note  = a.nota ?? a.commentoGiustificazione ?? "";
 
-    // Se non c'è data, skip
-    if (!data) {
-      console.log(`Assenza senza data, skip. Campi: ${Object.keys(a).join(", ")}`);
-      continue;
-    }
+    if (!data) continue;
 
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
         datGiorno:    { title:    [{ text: { content: data } }] },
-        tipo:         { select:   { name: tipo } },
+        tipo:         { select:   { name: sanitizeSelectName(tipo) } },
         giustificata: { checkbox: giust },
         note:         { rich_text:[{ text: { content: note } }] },
         pk:           { rich_text:[{ text: { content: pk } }] },
@@ -207,18 +196,16 @@ export async function seedRegistroRecords(
   databaseId: string,
   registro: AnyRecord[]
 ) {
-  if (registro?.length > 0) console.log("🔍 Campi registro disponibili:", Object.keys(registro[0]));
-
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
   for (const r of registro ?? []) {
     const pk = r.pk ?? r.pkRegistro ?? r.id ?? JSON.stringify(r);
     if (existingPks.has(pk)) continue;
 
-    const argomento = r.desArgomento ?? r.argomento ?? r.attivita ?? r.nota ?? "—";
-    const materia   = r.desMateria ?? r.materia ?? "—";
-    const data      = r.datGiorno ?? r.datEvento ?? r.data ?? "";
-    const docente   = r.docente ?? r.desDocente ?? "";
-    const attivita  = r.attivita ?? r.attività ?? r.desAttivita ?? "";
+    const argomento = r.attivita ?? r.argomento ?? "—";
+    const materia   = sanitizeSelectName(r.materia ?? r.desMateria ?? "—"); // FIX: NO VIRGOLE QUI
+    const data      = r.datGiorno ?? r.datEvento ?? "";
+    const docente   = r.docente ?? r.pkDocente ?? "";
+    const attivita  = r.attivita ?? "";
 
     await client.pages.create({
       parent: { database_id: databaseId },
@@ -242,16 +229,14 @@ export async function seedBachecaRecords(
   databaseId: string,
   bacheca: AnyRecord[]
 ) {
-  if (bacheca?.length > 0) console.log("🔍 Campi bacheca disponibili:", Object.keys(bacheca[0]));
-
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
   for (const b of bacheca ?? []) {
     const pk = b.pk ?? b.pkBacheca ?? b.id ?? JSON.stringify(b);
     if (existingPks.has(pk)) continue;
 
-    const oggetto  = b.desOggetto ?? b.oggetto ?? b.titolo ?? b.desTitolo ?? "Comunicazione";
+    const oggetto  = b.desOggetto ?? b.oggetto ?? b.titolo ?? "Comunicazione";
     const data     = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? "";
-    const msg      = b.desMessaggio ?? b.messaggio ?? b.testo ?? b.contenuto ?? "";
+    const msg      = b.desMessaggio ?? b.messaggio ?? b.testo ?? "";
 
     await client.pages.create({
       parent: { database_id: databaseId },
