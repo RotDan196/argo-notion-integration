@@ -55,7 +55,7 @@ Fork this repository to your GitHub account.
 
 ## ⚙️ 5. Configure GitHub Secrets
 
-1. Open your forked repository  
+1. Open your forked repository
 2. Go to: `Settings → Secrets and variables → Actions`
 3. Add the following **Repository Secrets**:
 
