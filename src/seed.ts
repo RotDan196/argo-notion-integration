@@ -26,41 +26,8 @@ type Registro = {
   ora: number;
 };
 
-type Voto = {
-  pk: string;
-  datGiorno: string;
-  desMateria?: string;
-  decVoto?: string;
-  voto?: string;
-  codTipo?: string;
-  desGiudizio?: string;
-  docente?: string;
-};
-
-type Assenza = {
-  pk: string;
-  datGiorno: string;
-  codEvento?: string;
-  flgGiustificata?: string;
-  desMotivo?: string;
-};
-
-type RegistroEntry = {
-  pk: string;
-  datGiorno: string;
-  desArgomento?: string;
-  desMateria?: string;
-  docente?: string;
-  attivita?: string | null;
-};
-
-type BachecaEntry = {
-  pk: string;
-  datGiorno?: string;
-  datPubblicazione?: string;
-  desOggetto?: string;
-  desMessaggio?: string;
-};
+// any per voti/assenze/registro/bacheca così leggiamo i campi reali al runtime
+type AnyRecord = Record<string, any>;
 
 // ── Promemoria ────────────────────────────────────────────────────────────────
 export async function seedPromemoriaRecords(
@@ -157,25 +124,40 @@ export async function seedCompitiRecords(
 export async function seedVotiRecords(
   client: NotionClient,
   databaseId: string,
-  voti: Voto[]
+  voti: AnyRecord[]
 ) {
+  if (voti?.length > 0) console.log("🔍 Campi voto disponibili:", Object.keys(voti[0]));
+
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
-  for (const v of voti) {
-    if (existingPks.has(v.pk)) continue;
+  for (const v of voti ?? []) {
+    const pk = v.pk ?? v.pkVoto ?? v.id ?? JSON.stringify(v);
+    if (existingPks.has(pk)) continue;
+
+    // Prova tutti i possibili nomi del campo voto nell'API Argo
+    const votoRaw = v.decVoto ?? v.votoValore ?? v.voto ?? v.codVoto ?? v.valVoto ?? v.votoDecimale;
+    const votoNum = votoRaw != null ? parseFloat(String(votoRaw)) || 0 : 0;
+    const votoStr = votoRaw != null ? String(votoRaw) : "—";
+
+    const materia  = v.desMateria ?? v.materia ?? v.desBreveMateria ?? "—";
+    const data     = v.datGiorno ?? v.datVoto ?? v.data ?? "";
+    const tipo     = v.codTipo ?? v.tipoVoto ?? v.desTipo ?? "Scritto";
+    const giudizio = v.desGiudizio ?? v.giudizio ?? v.nota ?? "";
+    const docente  = v.docente ?? v.desDocente ?? v.nomDocente ?? "";
+
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
-        materia:   { title:     [{ text: { content: v.desMateria ?? "—" } }] },
-        voto:      { number:    parseFloat(v.decVoto ?? v.voto ?? "0") || 0 },
-        datGiorno: { date:      buildDate(v.datGiorno) ?? null },
-        tipo:      { select:    { name: v.codTipo ?? "Scritto" } },
-        giudizio:  { rich_text: [{ text: { content: v.desGiudizio ?? "" } }] },
-        docente:   { rich_text: [{ text: { content: v.docente ?? "" } }] },
-        pk:        { rich_text: [{ text: { content: v.pk } }] },
+        materia:   { title:     [{ text: { content: materia } }] },
+        voto:      { number:    votoNum },
+        datGiorno: { date:      buildDate(data) ?? null },
+        tipo:      { select:    { name: tipo } },
+        giudizio:  { rich_text: [{ text: { content: giudizio } }] },
+        docente:   { rich_text: [{ text: { content: docente } }] },
+        pk:        { rich_text: [{ text: { content: pk } }] },
       },
     });
-    console.log(`Voto ${v.desMateria} (${v.decVoto ?? v.voto}) aggiunto.`);
-    existingPks.add(v.pk);
+    console.log(`Voto ${materia} (${votoStr}) aggiunto.`);
+    existingPks.add(pk);
   }
 }
 
@@ -183,23 +165,39 @@ export async function seedVotiRecords(
 export async function seedAssenzeRecords(
   client: NotionClient,
   databaseId: string,
-  appello: Assenza[]
+  appello: AnyRecord[]
 ) {
+  if (appello?.length > 0) console.log("🔍 Campi assenza disponibili:", Object.keys(appello[0]));
+
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
-  for (const a of appello) {
-    if (existingPks.has(a.pk)) continue;
+  for (const a of appello ?? []) {
+    const pk = a.pk ?? a.pkAssenza ?? a.id ?? JSON.stringify(a);
+    if (existingPks.has(pk)) continue;
+
+    // Prova tutti i possibili nomi del campo data nell'API Argo
+    const data  = a.datGiorno ?? a.datAssenza ?? a.data ?? a.datEvento ?? "";
+    const tipo  = a.codEvento ?? a.tipoAssenza ?? a.desEvento ?? a.tipo ?? "Assenza";
+    const giust = a.flgGiustificata === "S" || a.giustificata === true || a.flgGiust === "S";
+    const note  = a.desMotivo ?? a.nota ?? a.note ?? "";
+
+    // Se non c'è data, skip
+    if (!data) {
+      console.log(`Assenza senza data, skip. Campi: ${Object.keys(a).join(", ")}`);
+      continue;
+    }
+
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
-        datGiorno:    { title:    [{ text: { content: a.datGiorno } }] },
-        tipo:         { select:   { name: a.codEvento ?? "Assenza" } },
-        giustificata: { checkbox: a.flgGiustificata === "S" },
-        note:         { rich_text:[{ text: { content: a.desMotivo ?? "" } }] },
-        pk:           { rich_text:[{ text: { content: a.pk } }] },
+        datGiorno:    { title:    [{ text: { content: data } }] },
+        tipo:         { select:   { name: tipo } },
+        giustificata: { checkbox: giust },
+        note:         { rich_text:[{ text: { content: note } }] },
+        pk:           { rich_text:[{ text: { content: pk } }] },
       },
     });
-    console.log(`Assenza ${a.datGiorno} aggiunta.`);
-    existingPks.add(a.pk);
+    console.log(`Assenza ${data} aggiunta.`);
+    existingPks.add(pk);
   }
 }
 
@@ -207,24 +205,34 @@ export async function seedAssenzeRecords(
 export async function seedRegistroRecords(
   client: NotionClient,
   databaseId: string,
-  registro: RegistroEntry[]
+  registro: AnyRecord[]
 ) {
+  if (registro?.length > 0) console.log("🔍 Campi registro disponibili:", Object.keys(registro[0]));
+
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
-  for (const r of registro) {
-    if (existingPks.has(r.pk)) continue;
+  for (const r of registro ?? []) {
+    const pk = r.pk ?? r.pkRegistro ?? r.id ?? JSON.stringify(r);
+    if (existingPks.has(pk)) continue;
+
+    const argomento = r.desArgomento ?? r.argomento ?? r.attivita ?? r.nota ?? "—";
+    const materia   = r.desMateria ?? r.materia ?? "—";
+    const data      = r.datGiorno ?? r.datEvento ?? r.data ?? "";
+    const docente   = r.docente ?? r.desDocente ?? "";
+    const attivita  = r.attivita ?? r.attività ?? r.desAttivita ?? "";
+
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
-        argomento: { title:     [{ text: { content: truncateTitle(r.desArgomento ?? "—", 100) } }] },
-        materia:   { select:    { name: r.desMateria ?? "—" } },
-        datGiorno: { date:      buildDate(r.datGiorno) ?? null },
-        docente:   { rich_text: [{ text: { content: r.docente ?? "" } }] },
-        attivita:  { rich_text: [{ text: { content: r.attivita ?? "" } }] },
-        pk:        { rich_text: [{ text: { content: r.pk } }] },
+        argomento: { title:     [{ text: { content: truncateTitle(argomento, 100) } }] },
+        materia:   { select:    { name: materia } },
+        datGiorno: { date:      buildDate(data) ?? null },
+        docente:   { rich_text: [{ text: { content: docente } }] },
+        attivita:  { rich_text: [{ text: { content: attivita } }] },
+        pk:        { rich_text: [{ text: { content: pk } }] },
       },
     });
-    console.log(`Registro ${r.datGiorno} (${r.desMateria}) aggiunto.`);
-    existingPks.add(r.pk);
+    console.log(`Registro ${data} (${materia}) aggiunto.`);
+    existingPks.add(pk);
   }
 }
 
@@ -232,22 +240,30 @@ export async function seedRegistroRecords(
 export async function seedBachecaRecords(
   client: NotionClient,
   databaseId: string,
-  bacheca: BachecaEntry[]
+  bacheca: AnyRecord[]
 ) {
+  if (bacheca?.length > 0) console.log("🔍 Campi bacheca disponibili:", Object.keys(bacheca[0]));
+
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
-  for (const b of bacheca) {
-    if (existingPks.has(b.pk)) continue;
+  for (const b of bacheca ?? []) {
+    const pk = b.pk ?? b.pkBacheca ?? b.id ?? JSON.stringify(b);
+    if (existingPks.has(pk)) continue;
+
+    const oggetto  = b.desOggetto ?? b.oggetto ?? b.titolo ?? b.desTitolo ?? "Comunicazione";
+    const data     = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? "";
+    const msg      = b.desMessaggio ?? b.messaggio ?? b.testo ?? b.contenuto ?? "";
+
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
-        oggetto:   { title:    [{ text: { content: truncateTitle(b.desOggetto ?? "Comunicazione", 100) } }] },
-        datGiorno: { date:     buildDate(b.datPubblicazione ?? b.datGiorno) ?? null },
+        oggetto:   { title:    [{ text: { content: truncateTitle(oggetto, 100) } }] },
+        datGiorno: { date:     buildDate(data) ?? null },
         letta:     { checkbox: false },
-        messaggio: { rich_text:[{ text: { content: b.desMessaggio ?? "" } }] },
-        pk:        { rich_text:[{ text: { content: b.pk } }] },
+        messaggio: { rich_text:[{ text: { content: msg } }] },
+        pk:        { rich_text:[{ text: { content: pk } }] },
       },
     });
-    console.log(`Bacheca "${b.desOggetto}" aggiunta.`);
-    existingPks.add(b.pk);
+    console.log(`Bacheca "${oggetto}" aggiunta.`);
+    existingPks.add(pk);
   }
 }
