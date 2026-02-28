@@ -62,22 +62,28 @@ type BachecaEntry = {
   desMessaggio?: string;
 };
 
-// ── Promemoria (già esistente, invariata) ─────────────────────────────────────
+// ── Promemoria ────────────────────────────────────────────────────────────────
 export async function seedPromemoriaRecords(
   client: NotionClient,
   databaseId: string,
   promemoria: Promemoria[]
 ) {
   const today = todayISO();
+  console.log("Soglia promemoria (oggi):", today);
   const existingTitles = await loadExistingTitles(client, databaseId, "desAnnotazioniCompleta");
 
   for (const p of promemoria) {
     const eventoDate = buildDate(p.datEvento);
-    if (!eventoDate?.start || eventoDate.start < today) continue;
+    if (!eventoDate?.start) continue;
+    if (eventoDate.start < today) continue;
 
     const fullText   = p.desAnnotazioni || "";
     const shortTitle = truncateTitle(fullText);
-    if (existingTitles.has(fullText)) { console.log(`Promemoria "${shortTitle}" già presente, skip.`); continue; }
+
+    if (existingTitles.has(fullText)) {
+      console.log(`Promemoria "${shortTitle}" già presente, skip.`);
+      continue;
+    }
 
     await client.pages.create({
       parent: { database_id: databaseId },
@@ -88,34 +94,43 @@ export async function seedPromemoriaRecords(
         docente:                { rich_text: [{ text: { content: p.docente || "" } }] },
         flgVisibileFamiglia:    { checkbox:  p.flgVisibileFamiglia === "S" },
         datEvento:              { date: eventoDate },
-        datGiorno:              { date: buildDate(p.datGiorno) },
+        datGiorno:              { date: buildDate(p.datGiorno) ?? null },
         oraInizio:              { rich_text: [{ text: { content: p.oraInizio !== "00:00" ? p.oraInizio ?? "07:50" : "07:50" } }] },
         oraFine:                { rich_text: [{ text: { content: p.oraFine   !== "00:00" ? p.oraFine   ?? "13:10" : "13:10" } }] },
       },
-      children: [{ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: fullText } }] } }],
+      children: [{
+        object: "block", type: "paragraph",
+        paragraph: { rich_text: [{ type: "text", text: { content: fullText } }] },
+      }],
     });
     console.log(`Promemoria "${shortTitle}" aggiunto.`);
     existingTitles.add(fullText);
   }
 }
 
-// ── Compiti (già esistente, invariata) ────────────────────────────────────────
+// ── Compiti ───────────────────────────────────────────────────────────────────
 export async function seedCompitiRecords(
   client: NotionClient,
   databaseId: string,
   registro: Registro[]
 ) {
   const today = todayISO();
+  console.log("Soglia compiti (oggi):", today);
   const existingTitles = await loadExistingTitles(client, databaseId, "compitoCompleto");
 
   for (const r of registro) {
     for (const c of r.compiti || []) {
       const consegnaDate = buildDate(c.dataConsegna);
-      if (!consegnaDate?.start || consegnaDate.start < today) continue;
+      if (!consegnaDate?.start) continue;
+      if (consegnaDate.start < today) continue;
 
       const fullText   = c.compito || "";
       const shortTitle = truncateTitle(fullText);
-      if (existingTitles.has(fullText)) { console.log(`Compito "${shortTitle}" già presente, skip.`); continue; }
+
+      if (existingTitles.has(fullText)) {
+        console.log(`Compito "${shortTitle}" già presente, skip.`);
+        continue;
+      }
 
       await client.pages.create({
         parent: { database_id: databaseId },
@@ -127,7 +142,10 @@ export async function seedCompitiRecords(
           docente:         { rich_text: [{ text: { content: r.docente || "" } }] },
           ora:             { number: r.ora || 0 },
         },
-        children: [{ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: fullText } }] } }],
+        children: [{
+          object: "block", type: "paragraph",
+          paragraph: { rich_text: [{ type: "text", text: { content: fullText } }] },
+        }],
       });
       console.log(`Compito "${shortTitle}" aggiunto.`);
       existingTitles.add(fullText);
@@ -136,7 +154,11 @@ export async function seedCompitiRecords(
 }
 
 // ── Voti ──────────────────────────────────────────────────────────────────────
-export async function seedVotiRecords(client: NotionClient, databaseId: string, voti: Voto[]) {
+export async function seedVotiRecords(
+  client: NotionClient,
+  databaseId: string,
+  voti: Voto[]
+) {
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
   for (const v of voti) {
     if (existingPks.has(v.pk)) continue;
@@ -145,7 +167,7 @@ export async function seedVotiRecords(client: NotionClient, databaseId: string, 
       properties: {
         materia:   { title:     [{ text: { content: v.desMateria ?? "—" } }] },
         voto:      { number:    parseFloat(v.decVoto ?? v.voto ?? "0") || 0 },
-        datGiorno: { date:      buildDate(v.datGiorno) },
+        datGiorno: { date:      buildDate(v.datGiorno) ?? null },
         tipo:      { select:    { name: v.codTipo ?? "Scritto" } },
         giudizio:  { rich_text: [{ text: { content: v.desGiudizio ?? "" } }] },
         docente:   { rich_text: [{ text: { content: v.docente ?? "" } }] },
@@ -158,7 +180,11 @@ export async function seedVotiRecords(client: NotionClient, databaseId: string, 
 }
 
 // ── Assenze ───────────────────────────────────────────────────────────────────
-export async function seedAssenzeRecords(client: NotionClient, databaseId: string, appello: Assenza[]) {
+export async function seedAssenzeRecords(
+  client: NotionClient,
+  databaseId: string,
+  appello: Assenza[]
+) {
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
   for (const a of appello) {
     if (existingPks.has(a.pk)) continue;
@@ -178,7 +204,11 @@ export async function seedAssenzeRecords(client: NotionClient, databaseId: strin
 }
 
 // ── Registro ──────────────────────────────────────────────────────────────────
-export async function seedRegistroRecords(client: NotionClient, databaseId: string, registro: RegistroEntry[]) {
+export async function seedRegistroRecords(
+  client: NotionClient,
+  databaseId: string,
+  registro: RegistroEntry[]
+) {
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
   for (const r of registro) {
     if (existingPks.has(r.pk)) continue;
@@ -187,7 +217,7 @@ export async function seedRegistroRecords(client: NotionClient, databaseId: stri
       properties: {
         argomento: { title:     [{ text: { content: truncateTitle(r.desArgomento ?? "—", 100) } }] },
         materia:   { select:    { name: r.desMateria ?? "—" } },
-        datGiorno: { date:      buildDate(r.datGiorno) },
+        datGiorno: { date:      buildDate(r.datGiorno) ?? null },
         docente:   { rich_text: [{ text: { content: r.docente ?? "" } }] },
         attivita:  { rich_text: [{ text: { content: r.attivita ?? "" } }] },
         pk:        { rich_text: [{ text: { content: r.pk } }] },
@@ -199,7 +229,11 @@ export async function seedRegistroRecords(client: NotionClient, databaseId: stri
 }
 
 // ── Bacheca ───────────────────────────────────────────────────────────────────
-export async function seedBachecaRecords(client: NotionClient, databaseId: string, bacheca: BachecaEntry[]) {
+export async function seedBachecaRecords(
+  client: NotionClient,
+  databaseId: string,
+  bacheca: BachecaEntry[]
+) {
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
   for (const b of bacheca) {
     if (existingPks.has(b.pk)) continue;
@@ -207,7 +241,7 @@ export async function seedBachecaRecords(client: NotionClient, databaseId: strin
       parent: { database_id: databaseId },
       properties: {
         oggetto:   { title:    [{ text: { content: truncateTitle(b.desOggetto ?? "Comunicazione", 100) } }] },
-        datGiorno: { date:     buildDate(b.datPubblicazione ?? b.datGiorno) },
+        datGiorno: { date:     buildDate(b.datPubblicazione ?? b.datGiorno) ?? null },
         letta:     { checkbox: false },
         messaggio: { rich_text:[{ text: { content: b.desMessaggio ?? "" } }] },
         pk:        { rich_text:[{ text: { content: b.pk } }] },
