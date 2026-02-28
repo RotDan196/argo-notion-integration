@@ -29,3 +29,5 @@ jobs:
           CODICE_SCUOLA: ${{ secrets.CODICE_SCUOLA }}
           PASSWORD: ${{ secrets.PASSWORD }}
           NOME_UTENTE: ${{ secrets.NOME_UTENTE }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}  
+
