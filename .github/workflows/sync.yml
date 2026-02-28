@@ -1,31 +1,31 @@
-name: Argo → Notion Sync
+name: Argo Bridge Sync Notion
 
 on:
   schedule:
-    - cron: '0 7,13,18 * * 1-6'  # alle 7, 13 e 18 dal lunedì al sabato
-  workflow_dispatch:               # permette avvio manuale dal sito
+    - cron: "0 * * * *"
+  workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: 20
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: npm install
 
-      - name: Run sync
-        run: python main.py
+      - name: Run sync script
+        run: npm run sync
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          ARGO_USERNAME: ${{ secrets.ARGO_USERNAME }}
-          ARGO_PASSWORD: ${{ secrets.ARGO_PASSWORD }}
-          ARGO_SCHOOL_CODE: ${{ secrets.ARGO_SCHOOL_CODE }}
-
+          NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
+          CODICE_SCUOLA: ${{ secrets.CODICE_SCUOLA }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+          NOME_UTENTE: ${{ secrets.NOME_UTENTE }}
