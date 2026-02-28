@@ -4,6 +4,7 @@ import { Client as NotionClient } from "@notionhq/client";
 import { setupCompitiDatabase, setupPromemoriaDatabase } from "./setup.js";
 import { seedCompitiRecords, seedPromemoriaRecords } from "./seed.js";
 import { ok } from "node:assert";
+import { organizeWithAI } from "./ai.js";
 
 const NOTION_TOKEN = process.env.NOTION_TOKEN;
 const NOTION_PARENT_PAGE = process.env.NOTION_PARENT_PAGE_ID as string;
@@ -21,6 +22,8 @@ try {
 
     const promemoria_id = await setupPromemoriaDatabase(notionClient, NOTION_PARENT_PAGE);
 	const compiti_id = await setupCompitiDatabase(notionClient, NOTION_PARENT_PAGE);
+	const argoData = { voti, compiti, assenze };
+	const aiSummary = await organizeWithAI(argoData);
 
     await seedPromemoriaRecords(notionClient, promemoria_id, argoClient.dashboard?.promemoria as any);
 	await seedCompitiRecords(notionClient, compiti_id, argoClient.dashboard?.registro as any)
