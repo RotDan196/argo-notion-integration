@@ -41,10 +41,9 @@ This page will receive the synced data.
 
 ## 🔓 3. Grant Page Access
 
-1. Open the `Register` page  
-2. Click **Share**  
-3. Add the integration you just created  
-4. Make sure it has **write access**
+1. Open the `Content Access` tab
+2. Click **Edit Access**
+3. Select the previously created page and click **Save**
 
 ---
 
