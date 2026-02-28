@@ -26,8 +26,8 @@ jobs:
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
-          CODICE_SCUOLA: ${{ secrets.CODICE_SCUOLA }}
-          PASSWORD: ${{ secrets.PASSWORD }}
           NOME_UTENTE: ${{ secrets.NOME_UTENTE }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}  
+          PASSWORD: ${{ secrets.PASSWORD }}
+          CODICE_SCUOLA: ${{ secrets.CODICE_SCUOLA }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
