@@ -1,8 +1,8 @@
 import type { Client as NotionClient } from "@notionhq/client";
 import { buildDate, loadExistingTitles, todayISO, truncateTitle } from "./utils.js";
 
-// ── Costanti date ─────────────────────────────────────────────────────────────
-const VOTI_START_DATE    = "2026-01-25"; // data fissa per i voti
+// ── Soglie date ───────────────────────────────────────────────────────────────
+const VOTI_START_DATE = "2026-01-25";
 const ONE_MONTH_AGO = (() => {
   const d = new Date();
   d.setMonth(d.getMonth() - 1);
@@ -10,9 +10,9 @@ const ONE_MONTH_AGO = (() => {
   return d.toISOString().split("T")[0];
 })();
 
-// ── Mapping codici Argo → label leggibili ────────────────────────────────────
-function mapTipoVoto(codice: string): string {
-  const map: Record<string, string> = {
+// ── Mapping codici Argo → label Notion ───────────────────────────────────────
+function mapTipoVoto(codice: string): "Scritto" | "Orale" | "Pratico" {
+  const map: Record<string, "Scritto" | "Orale" | "Pratico"> = {
     "V": "Scritto", "S": "Scritto", "T": "Scritto", "C": "Scritto",
     "O": "Orale",   "I": "Orale",   "G": "Orale",
     "P": "Pratico", "L": "Pratico",
@@ -20,8 +20,8 @@ function mapTipoVoto(codice: string): string {
   return map[String(codice ?? "").toUpperCase()] ?? "Scritto";
 }
 
-function mapTipoAssenza(codice: string): string {
-  const map: Record<string, string> = {
+function mapTipoAssenza(codice: string): "Assenza" | "Ritardo" | "Uscita anticipata" {
+  const map: Record<string, "Assenza" | "Ritardo" | "Uscita anticipata"> = {
     "A":  "Assenza",
     "R":  "Ritardo", "ER": "Ritardo", "ED": "Ritardo", "EI": "Ritardo",
     "U":  "Uscita anticipata", "UA": "Uscita anticipata",
@@ -151,18 +151,20 @@ export async function seedVotiRecords(
   databaseId: string,
   voti: AnyRecord[]
 ) {
-  const existingPks = await loadExistingTitles(client, databaseId, "pk");
+  // Dedup su "voce" = "MATERIA — YYYY-MM-DD" (unico per ogni voto senza pk)
+  const existingVoci = await loadExistingTitles(client, databaseId, "voce");
 
   for (const v of voti ?? []) {
-    const pk   = v.pk ?? v.pkVoto ?? v.id ?? JSON.stringify(v);
     const data = v.datGiorno ?? v.datEvento ?? "";
+    if (data < VOTI_START_DATE) continue;
 
-    if (data < VOTI_START_DATE) continue; // ← data fissa 25/01/2026
-    if (existingPks.has(pk)) continue;
-
+    const materia  = v.desMateria ?? v.materia ?? "—";
     const votoRaw  = v.valore ?? v.descrizioneVoto ?? 0;
     const votoNum  = parseFloat(String(votoRaw).replace("+", ".25").replace("-", ".75")) || 0;
-    const materia  = v.desMateria ?? v.materia ?? "—";
+    const voce     = `${materia} — ${data}`;    // chiave di dedup leggibile
+
+    if (existingVoci.has(voce)) continue;
+
     const tipo     = mapTipoVoto(v.codTipo ?? v.tipoValutazione ?? "");
     const giudizio = v.desCommento ?? v.descrizioneProva ?? "";
     const docente  = v.docente ?? "";
@@ -170,27 +172,26 @@ export async function seedVotiRecords(
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
-        materia:   { title:     [{ text: { content: materia } }] },
+        voce:      { title:     [{ text: { content: voce } }] },
+        materia:   { rich_text: [{ text: { content: materia } }] },
         voto:      { number:    votoNum },
         datGiorno: { date:      buildDate(data) ?? null },
         tipo:      { select:    { name: tipo } },
         giudizio:  { rich_text: [{ text: { content: giudizio } }] },
         docente:   { rich_text: [{ text: { content: docente } }] },
-        pk:        { rich_text: [{ text: { content: pk } }] },
       },
     });
     console.log(`Voto ${materia} (${votoRaw}) aggiunto.`);
-    existingPks.add(pk);
+    existingVoci.add(voce);
   }
 }
 
-// ── Medie per Materia (si ricalcola ogni sync) ────────────────────────────────
+// ── Medie per Materia ─────────────────────────────────────────────────────────
 export async function seedMediaVotiRecords(
   client: NotionClient,
   databaseId: string,
   voti: AnyRecord[]
 ) {
-  // Calcola medie solo sui voti dal VOTI_START_DATE
   const byMateria = new Map<string, number[]>();
   for (const v of voti ?? []) {
     const data = v.datGiorno ?? v.datEvento ?? "";
@@ -205,7 +206,7 @@ export async function seedMediaVotiRecords(
     byMateria.get(materia)!.push(num);
   }
 
-  // Archivia tutti i record esistenti (così si aggiorna ogni sync)
+  // Archivia vecchi record e ricrea (sempre aggiornato)
   let cursor: string | undefined;
   do {
     const res = await client.databases.query({ database_id: databaseId, start_cursor: cursor });
@@ -215,23 +216,19 @@ export async function seedMediaVotiRecords(
     cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
   } while (cursor);
 
-  // Ricrea con valori aggiornati
   for (const [materia, valori] of byMateria.entries()) {
-    const media  = valori.reduce((a, b) => a + b, 0) / valori.length;
-    const minV   = Math.min(...valori);
-    const maxV   = Math.max(...valori);
-
+    const media = valori.reduce((a, b) => a + b, 0) / valori.length;
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
         materia:  { title:  [{ text: { content: materia } }] },
         media:    { number: Math.round(media * 100) / 100 },
         numVoti:  { number: valori.length },
-        minVoto:  { number: minV },
-        maxVoto:  { number: maxV },
+        minVoto:  { number: Math.min(...valori) },
+        maxVoto:  { number: Math.max(...valori) },
       },
     });
-    console.log(`Media ${materia}: ${media.toFixed(2)} su ${valori.length} voti`);
+    console.log(`Media ${materia}: ${media.toFixed(2)} (${valori.length} voti)`);
   }
 }
 
@@ -241,32 +238,33 @@ export async function seedAssenzeRecords(
   databaseId: string,
   appello: AnyRecord[]
 ) {
-  const existingPks = await loadExistingTitles(client, databaseId, "pk");
+  // Dedup su "voce" = "YYYY-MM-DD — Tipo"
+  const existingVoci = await loadExistingTitles(client, databaseId, "voce");
 
   for (const a of appello ?? []) {
-    const pk   = a.pk ?? a.pkAssenza ?? a.id ?? JSON.stringify(a);
     const data = a.data ?? a.datEvento ?? "";
-
-    if (!data) continue;
-    if (data < ONE_MONTH_AGO) continue;
-    if (existingPks.has(pk)) continue;
+    if (!data || data < ONE_MONTH_AGO) continue;
 
     const tipo  = mapTipoAssenza(a.codEvento ?? "");
+    const voce  = `${data} — ${tipo}`;
+
+    if (existingVoci.has(voce)) continue;
+
     const giust = a.giustificata === true || a.daGiustificare === false;
     const note  = a.nota ?? a.commentoGiustificazione ?? "";
 
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
-        datGiorno:    { title:    [{ text: { content: data } }] },
+        voce:         { title:    [{ text: { content: voce } }] },
+        datGiorno:    { date:     buildDate(data) ?? null },
         tipo:         { select:   { name: tipo } },
         giustificata: { checkbox: giust },
         note:         { rich_text:[{ text: { content: note } }] },
-        pk:           { rich_text:[{ text: { content: pk } }] },
       },
     });
     console.log(`Assenza ${data} (${tipo}) aggiunta.`);
-    existingPks.add(pk);
+    existingVoci.add(voce);
   }
 }
 
@@ -276,33 +274,32 @@ export async function seedRegistroRecords(
   databaseId: string,
   registro: AnyRecord[]
 ) {
-  const existingPks = await loadExistingTitles(client, databaseId, "pk");
+  // Dedup su "argomento" (titolo)
+  const existingArgomenti = await loadExistingTitles(client, databaseId, "argomento");
 
   for (const r of registro ?? []) {
-    const pk   = r.pk ?? r.pkRegistro ?? r.id ?? JSON.stringify(r);
-    const data = r.datGiorno ?? r.datEvento ?? "";
-
+    const data      = r.datGiorno ?? r.datEvento ?? "";
     if (data < ONE_MONTH_AGO) continue;
-    if (existingPks.has(pk)) continue;
 
-    const argomento = r.attivita ?? r.argomento ?? "—";
+    const attivita  = r.attivita ?? "";
+    const argomento = truncateTitle(attivita || "—", 100);
     const materia   = sanitizeSelectName(r.materia ?? r.desMateria ?? "—");
     const docente   = r.docente ?? "";
-    const attivita  = r.attivita ?? "";
+
+    if (existingArgomenti.has(argomento)) continue;
 
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
-        argomento: { title:     [{ text: { content: truncateTitle(argomento, 100) } }] },
+        argomento: { title:     [{ text: { content: argomento } }] },
         materia:   { select:    { name: materia } },
         datGiorno: { date:      buildDate(data) ?? null },
         docente:   { rich_text: [{ text: { content: docente } }] },
         attivita:  { rich_text: [{ text: { content: attivita } }] },
-        pk:        { rich_text: [{ text: { content: pk } }] },
       },
     });
     console.log(`Registro ${data} (${materia}) aggiunto.`);
-    existingPks.add(pk);
+    existingArgomenti.add(argomento);
   }
 }
 
@@ -312,29 +309,60 @@ export async function seedBachecaRecords(
   databaseId: string,
   bacheca: AnyRecord[]
 ) {
-  const existingPks = await loadExistingTitles(client, databaseId, "pk");
+  const existingOggetti = await loadExistingTitles(client, databaseId, "oggetto");
 
   for (const b of bacheca ?? []) {
-    const pk   = b.pk ?? b.pkBacheca ?? b.id ?? JSON.stringify(b);
-    const data = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? "";
-
+    const data    = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? "";
     if (data < ONE_MONTH_AGO) continue;
-    if (existingPks.has(pk)) continue;
 
-    const oggetto = b.desOggetto ?? b.oggetto ?? b.titolo ?? "Comunicazione";
-    const msg     = b.desMessaggio ?? b.messaggio ?? b.testo ?? "";
+    const oggetto = truncateTitle(b.desOggetto ?? b.oggetto ?? b.titolo ?? "Comunicazione", 100);
+    if (existingOggetti.has(oggetto)) continue;
+
+    const msg = b.desMessaggio ?? b.messaggio ?? b.testo ?? "";
+
+    // Raccoglie tutti i link allegati presenti nell'oggetto Argo
+    const allegati: string[] = [];
+    const allegatiRaw = b.listaAllegati ?? b.allegati ?? b.files ?? [];
+    for (const a of allegatiRaw) {
+      const url = a.url ?? a.desUrl ?? a.link ?? a.path ?? null;
+      const nome = a.nome ?? a.desNome ?? a.fileName ?? a.name ?? url ?? "";
+      if (url) allegati.push(`${nome}: ${url}`);
+    }
+    // Fallback: campi url diretti sull'oggetto bacheca
+    if (allegati.length === 0 && (b.desUrl ?? b.url)) {
+      allegati.push(b.desUrl ?? b.url);
+    }
+    const allegatiStr = allegati.join("\n");
+
+    // Costruisce i blocchi figli: prima il testo, poi ogni allegato come link
+    const children: any[] = [];
+    if (msg) {
+      children.push({
+        object: "block", type: "paragraph",
+        paragraph: { rich_text: [{ type: "text", text: { content: msg } }] },
+      });
+    }
+    for (const a of allegatiRaw) {
+      const url  = a.url ?? a.desUrl ?? a.link ?? a.path ?? null;
+      const nome = a.nome ?? a.desNome ?? a.fileName ?? a.name ?? "Allegato";
+      if (!url) continue;
+      children.push({
+        object: "block", type: "bookmark",
+        bookmark: { url, caption: [{ type: "text", text: { content: nome } }] },
+      });
+    }
 
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
-        oggetto:   { title:    [{ text: { content: truncateTitle(oggetto, 100) } }] },
+        oggetto:   { title:    [{ text: { content: oggetto } }] },
         datGiorno: { date:     buildDate(data) ?? null },
         letta:     { checkbox: false },
-        messaggio: { rich_text:[{ text: { content: msg } }] },
-        pk:        { rich_text:[{ text: { content: pk } }] },
+        allegati:  { rich_text:[{ text: { content: allegatiStr } }] },
       },
+      children: children.length > 0 ? children : undefined,
     });
-    console.log(`Bacheca "${oggetto}" aggiunta.`);
-    existingPks.add(pk);
+    console.log(`Bacheca "${oggetto}" aggiunta${allegati.length > 0 ? ` (${allegati.length} allegati)` : ""}.`);
+    existingOggetti.add(oggetto);
   }
 }
