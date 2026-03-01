@@ -55,7 +55,6 @@ export async function setupVotiDatabase(client: NotionClient, parentPageId: stri
     parent: { page_id: parentPageId },
     title: [{ type: "text", text: { content: VOTI_DB_NAME } }],
     properties: {
-      // Titolo = "MATERIA — YYYY-MM-DD" per garantire unicità senza pk
       voce:      { title: {} },
       materia:   { rich_text: {} },
       voto:      { number: { format: "number" } },
@@ -92,7 +91,6 @@ export async function setupAssenzeDatabase(client: NotionClient, parentPageId: s
     parent: { page_id: parentPageId },
     title: [{ type: "text", text: { content: ASSENZE_DB_NAME } }],
     properties: {
-      // Titolo = "YYYY-MM-DD — Tipo" per unicità senza pk
       voce:         { title: {} },
       datGiorno:    { date: {} },
       tipo:         { select: { options: [{ name: "Assenza" }, { name: "Ritardo" }, { name: "Uscita anticipata" }] } },
@@ -130,7 +128,7 @@ export async function setupBachecaDatabase(client: NotionClient, parentPageId: s
       oggetto:   { title: {} },
       datGiorno: { date: {} },
       letta:     { checkbox: {} },
-      allegati:  { rich_text: {} },
+      messaggio: { rich_text: {} },
     },
   });
   return db.id;
