@@ -1,6 +1,40 @@
 import type { Client as NotionClient } from "@notionhq/client";
 import { buildDate, loadExistingTitles, todayISO, truncateTitle } from "./utils.js";
 
+// ── Costanti date ─────────────────────────────────────────────────────────────
+const VOTI_START_DATE    = "2026-01-25"; // data fissa per i voti
+const ONE_MONTH_AGO = (() => {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().split("T")[0];
+})();
+
+// ── Mapping codici Argo → label leggibili ────────────────────────────────────
+function mapTipoVoto(codice: string): string {
+  const map: Record<string, string> = {
+    "V": "Scritto", "S": "Scritto", "T": "Scritto", "C": "Scritto",
+    "O": "Orale",   "I": "Orale",   "G": "Orale",
+    "P": "Pratico", "L": "Pratico",
+  };
+  return map[String(codice ?? "").toUpperCase()] ?? "Scritto";
+}
+
+function mapTipoAssenza(codice: string): string {
+  const map: Record<string, string> = {
+    "A":  "Assenza",
+    "R":  "Ritardo", "ER": "Ritardo", "ED": "Ritardo", "EI": "Ritardo",
+    "U":  "Uscita anticipata", "UA": "Uscita anticipata",
+    "UE": "Uscita anticipata", "FU": "Uscita anticipata",
+  };
+  return map[String(codice ?? "").toUpperCase()] ?? "Assenza";
+}
+
+function sanitizeSelectName(name: string): string {
+  if (!name) return "—";
+  return name.replace(/,/g, "").trim();
+}
+
 type Promemoria = {
   pkDocente: string;
   desAnnotazioni: string;
@@ -28,35 +62,20 @@ type Registro = {
 
 type AnyRecord = Record<string, any>;
 
-// Utility: data di 1 mese fa in formato YYYY-MM-DD
-function oneMonthAgoISO(): string {
-  const d = new Date();
-  d.setMonth(d.getMonth() - 1);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().split("T")[0];
-}
-
-// Utility: pulisce i nomi Select (Notion non accetta virgole)
-function sanitizeSelectName(name: string): string {
-  if (!name) return "—";
-  return name.replace(/,/g, "").trim();
-}
-
 // ── Promemoria ────────────────────────────────────────────────────────────────
 export async function seedPromemoriaRecords(
   client: NotionClient,
   databaseId: string,
   promemoria: Promemoria[]
 ) {
-  const today    = todayISO();
-  const oneMonth = oneMonthAgoISO();
+  const today = todayISO();
   const existingTitles = await loadExistingTitles(client, databaseId, "desAnnotazioniCompleta");
 
   for (const p of promemoria) {
     const eventoDate = buildDate(p.datEvento);
     if (!eventoDate?.start) continue;
-    if (eventoDate.start < oneMonth) continue; // ← ignora oltre 1 mese fa
-    if (eventoDate.start < today) continue;    // ← ignora già passati
+    if (eventoDate.start < ONE_MONTH_AGO) continue;
+    if (eventoDate.start < today) continue;
 
     const fullText   = p.desAnnotazioni || "";
     const shortTitle = truncateTitle(fullText);
@@ -91,15 +110,14 @@ export async function seedCompitiRecords(
   databaseId: string,
   registro: Registro[]
 ) {
-  const today    = todayISO();
-  const oneMonth = oneMonthAgoISO();
+  const today = todayISO();
   const existingTitles = await loadExistingTitles(client, databaseId, "compitoCompleto");
 
   for (const r of registro) {
     for (const c of r.compiti || []) {
       const consegnaDate = buildDate(c.dataConsegna);
       if (!consegnaDate?.start) continue;
-      if (consegnaDate.start < oneMonth) continue; // ← ignora oltre 1 mese fa
+      if (consegnaDate.start < ONE_MONTH_AGO) continue;
       if (consegnaDate.start < today) continue;
 
       const fullText   = c.compito || "";
@@ -133,23 +151,21 @@ export async function seedVotiRecords(
   databaseId: string,
   voti: AnyRecord[]
 ) {
-  const oneMonth   = oneMonthAgoISO();
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
 
   for (const v of voti ?? []) {
     const pk   = v.pk ?? v.pkVoto ?? v.id ?? JSON.stringify(v);
     const data = v.datGiorno ?? v.datEvento ?? "";
 
-    if (data < oneMonth) continue; // ← ignora oltre 1 mese fa
+    if (data < VOTI_START_DATE) continue; // ← data fissa 25/01/2026
     if (existingPks.has(pk)) continue;
 
-    const votoRaw        = v.valore ?? v.descrizioneVoto ?? 0;
-    const stringVotoClean = String(votoRaw).replace("+", ".25").replace("-", ".75");
-    const votoNum        = parseFloat(stringVotoClean) || 0;
-    const materia        = v.desMateria ?? v.materia ?? "—";
-    const tipo           = v.codTipo ?? v.tipoValutazione ?? "Scritto";
-    const giudizio       = v.desCommento ?? v.descrizioneProva ?? "";
-    const docente        = v.docente ?? "";
+    const votoRaw  = v.valore ?? v.descrizioneVoto ?? 0;
+    const votoNum  = parseFloat(String(votoRaw).replace("+", ".25").replace("-", ".75")) || 0;
+    const materia  = v.desMateria ?? v.materia ?? "—";
+    const tipo     = mapTipoVoto(v.codTipo ?? v.tipoValutazione ?? "");
+    const giudizio = v.desCommento ?? v.descrizioneProva ?? "";
+    const docente  = v.docente ?? "";
 
     await client.pages.create({
       parent: { database_id: databaseId },
@@ -157,7 +173,7 @@ export async function seedVotiRecords(
         materia:   { title:     [{ text: { content: materia } }] },
         voto:      { number:    votoNum },
         datGiorno: { date:      buildDate(data) ?? null },
-        tipo:      { select:    { name: sanitizeSelectName(tipo) } },
+        tipo:      { select:    { name: tipo } },
         giudizio:  { rich_text: [{ text: { content: giudizio } }] },
         docente:   { rich_text: [{ text: { content: docente } }] },
         pk:        { rich_text: [{ text: { content: pk } }] },
@@ -168,13 +184,63 @@ export async function seedVotiRecords(
   }
 }
 
+// ── Medie per Materia (si ricalcola ogni sync) ────────────────────────────────
+export async function seedMediaVotiRecords(
+  client: NotionClient,
+  databaseId: string,
+  voti: AnyRecord[]
+) {
+  // Calcola medie solo sui voti dal VOTI_START_DATE
+  const byMateria = new Map<string, number[]>();
+  for (const v of voti ?? []) {
+    const data = v.datGiorno ?? v.datEvento ?? "";
+    if (data < VOTI_START_DATE) continue;
+
+    const materia = v.desMateria ?? v.materia ?? "—";
+    const votoRaw = v.valore ?? v.descrizioneVoto ?? 0;
+    const num     = parseFloat(String(votoRaw).replace("+", ".25").replace("-", ".75"));
+    if (isNaN(num) || num === 0) continue;
+
+    if (!byMateria.has(materia)) byMateria.set(materia, []);
+    byMateria.get(materia)!.push(num);
+  }
+
+  // Archivia tutti i record esistenti (così si aggiorna ogni sync)
+  let cursor: string | undefined;
+  do {
+    const res = await client.databases.query({ database_id: databaseId, start_cursor: cursor });
+    for (const page of res.results) {
+      await client.pages.update({ page_id: page.id, archived: true });
+    }
+    cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
+  } while (cursor);
+
+  // Ricrea con valori aggiornati
+  for (const [materia, valori] of byMateria.entries()) {
+    const media  = valori.reduce((a, b) => a + b, 0) / valori.length;
+    const minV   = Math.min(...valori);
+    const maxV   = Math.max(...valori);
+
+    await client.pages.create({
+      parent: { database_id: databaseId },
+      properties: {
+        materia:  { title:  [{ text: { content: materia } }] },
+        media:    { number: Math.round(media * 100) / 100 },
+        numVoti:  { number: valori.length },
+        minVoto:  { number: minV },
+        maxVoto:  { number: maxV },
+      },
+    });
+    console.log(`Media ${materia}: ${media.toFixed(2)} su ${valori.length} voti`);
+  }
+}
+
 // ── Assenze ───────────────────────────────────────────────────────────────────
 export async function seedAssenzeRecords(
   client: NotionClient,
   databaseId: string,
   appello: AnyRecord[]
 ) {
-  const oneMonth   = oneMonthAgoISO();
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
 
   for (const a of appello ?? []) {
@@ -182,10 +248,10 @@ export async function seedAssenzeRecords(
     const data = a.data ?? a.datEvento ?? "";
 
     if (!data) continue;
-    if (data < oneMonth) continue; // ← ignora oltre 1 mese fa
+    if (data < ONE_MONTH_AGO) continue;
     if (existingPks.has(pk)) continue;
 
-    const tipo  = a.codEvento ?? a.descrizione ?? "Assenza";
+    const tipo  = mapTipoAssenza(a.codEvento ?? "");
     const giust = a.giustificata === true || a.daGiustificare === false;
     const note  = a.nota ?? a.commentoGiustificazione ?? "";
 
@@ -193,13 +259,13 @@ export async function seedAssenzeRecords(
       parent: { database_id: databaseId },
       properties: {
         datGiorno:    { title:    [{ text: { content: data } }] },
-        tipo:         { select:   { name: sanitizeSelectName(tipo) } },
+        tipo:         { select:   { name: tipo } },
         giustificata: { checkbox: giust },
         note:         { rich_text:[{ text: { content: note } }] },
         pk:           { rich_text:[{ text: { content: pk } }] },
       },
     });
-    console.log(`Assenza ${data} aggiunta.`);
+    console.log(`Assenza ${data} (${tipo}) aggiunta.`);
     existingPks.add(pk);
   }
 }
@@ -210,19 +276,18 @@ export async function seedRegistroRecords(
   databaseId: string,
   registro: AnyRecord[]
 ) {
-  const oneMonth   = oneMonthAgoISO();
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
 
   for (const r of registro ?? []) {
     const pk   = r.pk ?? r.pkRegistro ?? r.id ?? JSON.stringify(r);
     const data = r.datGiorno ?? r.datEvento ?? "";
 
-    if (data < oneMonth) continue; // ← ignora oltre 1 mese fa
+    if (data < ONE_MONTH_AGO) continue;
     if (existingPks.has(pk)) continue;
 
     const argomento = r.attivita ?? r.argomento ?? "—";
     const materia   = sanitizeSelectName(r.materia ?? r.desMateria ?? "—");
-    const docente   = r.docente ?? r.pkDocente ?? "";
+    const docente   = r.docente ?? "";
     const attivita  = r.attivita ?? "";
 
     await client.pages.create({
@@ -247,14 +312,13 @@ export async function seedBachecaRecords(
   databaseId: string,
   bacheca: AnyRecord[]
 ) {
-  const oneMonth   = oneMonthAgoISO();
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
 
   for (const b of bacheca ?? []) {
     const pk   = b.pk ?? b.pkBacheca ?? b.id ?? JSON.stringify(b);
     const data = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? "";
 
-    if (data < oneMonth) continue; // ← ignora oltre 1 mese fa
+    if (data < ONE_MONTH_AGO) continue;
     if (existingPks.has(pk)) continue;
 
     const oggetto = b.desOggetto ?? b.oggetto ?? b.titolo ?? "Comunicazione";
