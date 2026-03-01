@@ -4,6 +4,7 @@ import { findNotionObjectByName } from "./utils.js";
 export const PROMEMORIA_DB_NAME = "Promemoria";
 export const COMPITI_DB_NAME    = "Compiti";
 export const VOTI_DB_NAME       = "Voti";
+export const MEDIE_DB_NAME      = "Medie per Materia";
 export const ASSENZE_DB_NAME    = "Assenze";
 export const REGISTRO_DB_NAME   = "Registro";
 export const BACHECA_DB_NAME    = "Bacheca";
@@ -36,12 +37,12 @@ export async function setupCompitiDatabase(client: NotionClient, parentPageId: s
     parent: { page_id: parentPageId },
     title: [{ type: "text", text: { content: COMPITI_DB_NAME } }],
     properties: {
-      compito:        { title: {} },
-      compitoCompleto:{ rich_text: {} },
-      dataConsegna:   { date: {} },
-      materia:        { rich_text: {} },
-      docente:        { rich_text: {} },
-      ora:            { number: {} },
+      compito:         { title: {} },
+      compitoCompleto: { rich_text: {} },
+      dataConsegna:    { date: {} },
+      materia:         { rich_text: {} },
+      docente:         { rich_text: {} },
+      ora:             { number: {} },
     },
   });
   return db.id;
@@ -54,13 +55,30 @@ export async function setupVotiDatabase(client: NotionClient, parentPageId: stri
     parent: { page_id: parentPageId },
     title: [{ type: "text", text: { content: VOTI_DB_NAME } }],
     properties: {
-      materia:    { title: {} },
-      voto:       { number: {} },
-      datGiorno:  { date: {} },
-      tipo:       { select: { options: [{ name: "Scritto" }, { name: "Orale" }, { name: "Pratico" }] } },
-      giudizio:   { rich_text: {} },
-      docente:    { rich_text: {} },
-      pk:         { rich_text: {} },
+      materia:   { title: {} },
+      voto:      { number: { format: "number" } },
+      datGiorno: { date: {} },
+      tipo:      { select: { options: [{ name: "Scritto" }, { name: "Orale" }, { name: "Pratico" }] } },
+      giudizio:  { rich_text: {} },
+      docente:   { rich_text: {} },
+      pk:        { rich_text: {} },
+    },
+  });
+  return db.id;
+}
+
+export async function setupMediaVotiDatabase(client: NotionClient, parentPageId: string) {
+  const id = await findNotionObjectByName(client, MEDIE_DB_NAME, "database");
+  if (id) return id;
+  const db = await client.databases.create({
+    parent: { page_id: parentPageId },
+    title: [{ type: "text", text: { content: MEDIE_DB_NAME } }],
+    properties: {
+      materia:  { title: {} },
+      media:    { number: { format: "number" } },
+      numVoti:  { number: {} },
+      minVoto:  { number: {} },
+      maxVoto:  { number: {} },
     },
   });
   return db.id;
@@ -73,11 +91,11 @@ export async function setupAssenzeDatabase(client: NotionClient, parentPageId: s
     parent: { page_id: parentPageId },
     title: [{ type: "text", text: { content: ASSENZE_DB_NAME } }],
     properties: {
-      datGiorno:       { title: {} },
-      tipo:            { select: { options: [{ name: "Assenza" }, { name: "Ritardo" }, { name: "Uscita anticipata" }] } },
-      giustificata:    { checkbox: {} },
-      note:            { rich_text: {} },
-      pk:              { rich_text: {} },
+      datGiorno:    { title: {} },
+      tipo:         { select: { options: [{ name: "Assenza" }, { name: "Ritardo" }, { name: "Uscita anticipata" }] } },
+      giustificata: { checkbox: {} },
+      note:         { rich_text: {} },
+      pk:           { rich_text: {} },
     },
   });
   return db.id;
@@ -90,12 +108,12 @@ export async function setupRegistroDatabase(client: NotionClient, parentPageId: 
     parent: { page_id: parentPageId },
     title: [{ type: "text", text: { content: REGISTRO_DB_NAME } }],
     properties: {
-      argomento:  { title: {} },
-      materia:    { select: {} },
-      datGiorno:  { date: {} },
-      docente:    { rich_text: {} },
-      attivita:   { rich_text: {} },
-      pk:         { rich_text: {} },
+      argomento: { title: {} },
+      materia:   { select: {} },
+      datGiorno: { date: {} },
+      docente:   { rich_text: {} },
+      attivita:  { rich_text: {} },
+      pk:        { rich_text: {} },
     },
   });
   return db.id;
@@ -108,11 +126,11 @@ export async function setupBachecaDatabase(client: NotionClient, parentPageId: s
     parent: { page_id: parentPageId },
     title: [{ type: "text", text: { content: BACHECA_DB_NAME } }],
     properties: {
-      oggetto:    { title: {} },
-      datGiorno:  { date: {} },
-      letta:      { checkbox: {} },
-      messaggio:  { rich_text: {} },
-      pk:         { rich_text: {} },
+      oggetto:   { title: {} },
+      datGiorno: { date: {} },
+      letta:     { checkbox: {} },
+      messaggio: { rich_text: {} },
+      pk:        { rich_text: {} },
     },
   });
   return db.id;
