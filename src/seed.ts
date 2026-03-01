@@ -303,31 +303,23 @@ export async function seedBachecaRecords(
   databaseId: string,
   bacheca: AnyRecord[]
 ) {
-  // Log campi del primo elemento per debug
-  if (bacheca?.length > 0) {
-    console.log("🔍 Campi bacheca:", Object.keys(bacheca[0]));
-    console.log("🔍 Esempio bacheca[0]:", JSON.stringify(bacheca[0], null, 2));
-  }
-
-  const existingOggetti = await loadExistingTitles(client, databaseId, "oggetto");
+  // FIX: dedup su "data — oggetto" (chiave composita) invece di solo oggetto
+  // così comunicazioni diverse con lo stesso titolo non vengono saltate
+  const existingVoci = await loadExistingTitles(client, databaseId, "oggetto");
 
   for (const b of bacheca ?? []) {
-    const oggetto = truncateTitle(
-      b.desOggetto ?? b.oggetto ?? b.titolo ?? b.desTitolo ?? "Comunicazione",
-      100
-    );
-    if (existingOggetti.has(oggetto)) continue;
+    const data    = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? "—";
+    const titolo  = b.desOggetto ?? b.oggetto ?? b.titolo ?? b.desTitolo ?? "Comunicazione";
+    const voce    = truncateTitle(`${data} — ${titolo}`, 100); // ← chiave composita unica
+    const msg     = b.desMessaggio ?? b.messaggio ?? b.testo ?? b.contenuto ?? "";
 
-    // Nessun filtro data per la bacheca: le comunicazioni scolastiche
-    // possono non avere una data recente o potrebbero non averla affatto
-    const data = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? null;
-    const msg  = b.desMessaggio ?? b.messaggio ?? b.testo ?? b.contenuto ?? "";
+    if (existingVoci.has(voce)) continue;
 
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
-        oggetto:   { title:    [{ text: { content: oggetto } }] },
-        datGiorno: { date:     data ? (buildDate(data) ?? null) : null },
+        oggetto:   { title:    [{ text: { content: voce } }] },
+        datGiorno: { date:     data !== "—" ? (buildDate(data) ?? null) : null },
         letta:     { checkbox: false },
         messaggio: { rich_text:[{ text: { content: truncateTitle(msg, 2000) } }] },
       },
@@ -336,7 +328,7 @@ export async function seedBachecaRecords(
         paragraph: { rich_text: [{ type: "text", text: { content: msg } }] },
       }] : undefined,
     });
-    console.log(`Bacheca "${oggetto}" aggiunta.`);
-    existingOggetti.add(oggetto);
+    console.log(`Bacheca "${voce}" aggiunta.`);
+    existingVoci.add(voce);
   }
 }
