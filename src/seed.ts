@@ -303,15 +303,17 @@ export async function seedBachecaRecords(
   databaseId: string,
   bacheca: AnyRecord[]
 ) {
-  // FIX: dedup su "data — oggetto" (chiave composita) invece di solo oggetto
-  // così comunicazioni diverse con lo stesso titolo non vengono saltate
   const existingVoci = await loadExistingTitles(client, databaseId, "oggetto");
 
   for (const b of bacheca ?? []) {
-    const data    = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? "—";
+    const data    = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? null;
     const titolo  = b.desOggetto ?? b.oggetto ?? b.titolo ?? b.desTitolo ?? "Comunicazione";
-    const voce    = truncateTitle(`${data} — ${titolo}`, 100); // ← chiave composita unica
+    const voce    = truncateTitle(`${data ?? "—"} — ${titolo}`, 100);
     const msg     = b.desMessaggio ?? b.messaggio ?? b.testo ?? b.contenuto ?? "";
+
+    // Salta solo se c'è una data ED è più vecchia di 1 mese
+    // Se non c'è data, la includiamo comunque
+    if (data && data < ONE_MONTH_AGO) continue;
 
     if (existingVoci.has(voce)) continue;
 
@@ -319,7 +321,7 @@ export async function seedBachecaRecords(
       parent: { database_id: databaseId },
       properties: {
         oggetto:   { title:    [{ text: { content: voce } }] },
-        datGiorno: { date:     data !== "—" ? (buildDate(data) ?? null) : null },
+        datGiorno: { date:     data ? (buildDate(data) ?? null) : null },
         letta:     { checkbox: false },
         messaggio: { rich_text:[{ text: { content: truncateTitle(msg, 2000) } }] },
       },
@@ -332,3 +334,4 @@ export async function seedBachecaRecords(
     existingVoci.add(voce);
   }
 }
+
