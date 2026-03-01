@@ -3,13 +3,13 @@ import { Client as ArgoClient } from "./argo-api/Client.js";
 import { Client as NotionClient } from "@notionhq/client";
 import {
   setupPromemoriaDatabase, setupCompitiDatabase,
-  setupVotiDatabase, setupAssenzeDatabase,
-  setupRegistroDatabase, setupBachecaDatabase,
+  setupVotiDatabase, setupMediaVotiDatabase,
+  setupAssenzeDatabase, setupRegistroDatabase, setupBachecaDatabase,
 } from "./setup.js";
 import {
   seedPromemoriaRecords, seedCompitiRecords,
-  seedVotiRecords, seedAssenzeRecords,
-  seedRegistroRecords, seedBachecaRecords,
+  seedVotiRecords, seedMediaVotiRecords,
+  seedAssenzeRecords, seedRegistroRecords, seedBachecaRecords,
 } from "./seed.js";
 import { organizeWithAI } from "./ai.js";
 import { ok } from "node:assert";
@@ -30,19 +30,22 @@ try {
 
   const dash = argoClient.dashboard!;
 
-  // ── Setup tutti i database (idempotente) ──────────────────────────────────
   console.log("📦 Setup database Notion...");
-  const [promemoria_id, compiti_id, voti_id, assenze_id, registro_id, bacheca_id] = await Promise.all([
+  const [
+    promemoria_id, compiti_id,
+    voti_id, medie_id,
+    assenze_id, registro_id, bacheca_id,
+  ] = await Promise.all([
     setupPromemoriaDatabase(notionClient, NOTION_PARENT_PAGE),
     setupCompitiDatabase(notionClient, NOTION_PARENT_PAGE),
     setupVotiDatabase(notionClient, NOTION_PARENT_PAGE),
+    setupMediaVotiDatabase(notionClient, NOTION_PARENT_PAGE),
     setupAssenzeDatabase(notionClient, NOTION_PARENT_PAGE),
     setupRegistroDatabase(notionClient, NOTION_PARENT_PAGE),
     setupBachecaDatabase(notionClient, NOTION_PARENT_PAGE),
   ]);
   console.log("✓ Database pronti!\n");
 
-  // ── Seed tutti i database ─────────────────────────────────────────────────
   console.log("📌 Sync Promemoria...");
   await seedPromemoriaRecords(notionClient, promemoria_id, dash.promemoria as any);
 
@@ -51,6 +54,9 @@ try {
 
   console.log("📊 Sync Voti...");
   await seedVotiRecords(notionClient, voti_id, dash.voti as any);
+
+  console.log("📈 Calcolo Medie...");
+  await seedMediaVotiRecords(notionClient, medie_id, dash.voti as any);
 
   console.log("📅 Sync Assenze...");
   await seedAssenzeRecords(notionClient, assenze_id, dash.appello as any);
@@ -61,7 +67,6 @@ try {
   console.log("📢 Sync Bacheca...");
   await seedBachecaRecords(notionClient, bacheca_id, dash.bacheca as any);
 
-  // ── AI Summary ────────────────────────────────────────────────────────────
   console.log("\n🤖 Generazione riepilogo AI...");
   const aiSummary = await organizeWithAI({
     voti:     dash.voti,
