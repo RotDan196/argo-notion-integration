@@ -55,13 +55,14 @@ export async function setupVotiDatabase(client: NotionClient, parentPageId: stri
     parent: { page_id: parentPageId },
     title: [{ type: "text", text: { content: VOTI_DB_NAME } }],
     properties: {
-      materia:   { title: {} },
+      // Titolo = "MATERIA — YYYY-MM-DD" per garantire unicità senza pk
+      voce:      { title: {} },
+      materia:   { rich_text: {} },
       voto:      { number: { format: "number" } },
       datGiorno: { date: {} },
       tipo:      { select: { options: [{ name: "Scritto" }, { name: "Orale" }, { name: "Pratico" }] } },
       giudizio:  { rich_text: {} },
       docente:   { rich_text: {} },
-      pk:        { rich_text: {} },
     },
   });
   return db.id;
@@ -91,11 +92,12 @@ export async function setupAssenzeDatabase(client: NotionClient, parentPageId: s
     parent: { page_id: parentPageId },
     title: [{ type: "text", text: { content: ASSENZE_DB_NAME } }],
     properties: {
-      datGiorno:    { title: {} },
+      // Titolo = "YYYY-MM-DD — Tipo" per unicità senza pk
+      voce:         { title: {} },
+      datGiorno:    { date: {} },
       tipo:         { select: { options: [{ name: "Assenza" }, { name: "Ritardo" }, { name: "Uscita anticipata" }] } },
       giustificata: { checkbox: {} },
       note:         { rich_text: {} },
-      pk:           { rich_text: {} },
     },
   });
   return db.id;
@@ -113,7 +115,6 @@ export async function setupRegistroDatabase(client: NotionClient, parentPageId: 
       datGiorno: { date: {} },
       docente:   { rich_text: {} },
       attivita:  { rich_text: {} },
-      pk:        { rich_text: {} },
     },
   });
   return db.id;
@@ -129,8 +130,7 @@ export async function setupBachecaDatabase(client: NotionClient, parentPageId: s
       oggetto:   { title: {} },
       datGiorno: { date: {} },
       letta:     { checkbox: {} },
-      messaggio: { rich_text: {} },
-      pk:        { rich_text: {} },
+      allegati:  { rich_text: {} },
     },
   });
   return db.id;
