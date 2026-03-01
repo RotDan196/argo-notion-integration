@@ -28,7 +28,15 @@ type Registro = {
 
 type AnyRecord = Record<string, any>;
 
-// Utility per pulire i nomi usati nelle Select di Notion (No virgole)
+// Utility: data di 1 mese fa in formato YYYY-MM-DD
+function oneMonthAgoISO(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().split("T")[0];
+}
+
+// Utility: pulisce i nomi Select (Notion non accetta virgole)
 function sanitizeSelectName(name: string): string {
   if (!name) return "—";
   return name.replace(/,/g, "").trim();
@@ -40,17 +48,18 @@ export async function seedPromemoriaRecords(
   databaseId: string,
   promemoria: Promemoria[]
 ) {
-  const today = todayISO();
+  const today    = todayISO();
+  const oneMonth = oneMonthAgoISO();
   const existingTitles = await loadExistingTitles(client, databaseId, "desAnnotazioniCompleta");
 
   for (const p of promemoria) {
     const eventoDate = buildDate(p.datEvento);
     if (!eventoDate?.start) continue;
-    if (eventoDate.start < today) continue;
+    if (eventoDate.start < oneMonth) continue; // ← ignora oltre 1 mese fa
+    if (eventoDate.start < today) continue;    // ← ignora già passati
 
     const fullText   = p.desAnnotazioni || "";
     const shortTitle = truncateTitle(fullText);
-
     if (existingTitles.has(fullText)) continue;
 
     await client.pages.create({
@@ -82,18 +91,19 @@ export async function seedCompitiRecords(
   databaseId: string,
   registro: Registro[]
 ) {
-  const today = todayISO();
+  const today    = todayISO();
+  const oneMonth = oneMonthAgoISO();
   const existingTitles = await loadExistingTitles(client, databaseId, "compitoCompleto");
 
   for (const r of registro) {
     for (const c of r.compiti || []) {
       const consegnaDate = buildDate(c.dataConsegna);
       if (!consegnaDate?.start) continue;
+      if (consegnaDate.start < oneMonth) continue; // ← ignora oltre 1 mese fa
       if (consegnaDate.start < today) continue;
 
       const fullText   = c.compito || "";
       const shortTitle = truncateTitle(fullText);
-
       if (existingTitles.has(fullText)) continue;
 
       await client.pages.create({
@@ -123,22 +133,23 @@ export async function seedVotiRecords(
   databaseId: string,
   voti: AnyRecord[]
 ) {
+  const oneMonth   = oneMonthAgoISO();
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
+
   for (const v of voti ?? []) {
-    const pk = v.pk ?? v.pkVoto ?? v.id ?? JSON.stringify(v);
+    const pk   = v.pk ?? v.pkVoto ?? v.id ?? JSON.stringify(v);
+    const data = v.datGiorno ?? v.datEvento ?? "";
+
+    if (data < oneMonth) continue; // ← ignora oltre 1 mese fa
     if (existingPks.has(pk)) continue;
 
-    // fix: in base ai log, il voto numerico sta in "valore" o "descrizioneVoto" se è una stringa (es. "8+")
-    const votoRaw = v.valore ?? v.descrizioneVoto ?? 0;
-    // Rimuoviamo i "+" e i "-" per convertire in numero per la colonna Notion
+    const votoRaw        = v.valore ?? v.descrizioneVoto ?? 0;
     const stringVotoClean = String(votoRaw).replace("+", ".25").replace("-", ".75");
-    const votoNum = parseFloat(stringVotoClean) || 0;
-
-    const materia  = v.desMateria ?? v.materia ?? v.materiaLight ?? "—";
-    const data     = v.datGiorno ?? v.datEvento ?? "";
-    const tipo     = v.codTipo ?? v.tipoValutazione ?? "Scritto";
-    const giudizio = v.desCommento ?? v.descrizioneProva ?? "";
-    const docente  = v.docente ?? "";
+    const votoNum        = parseFloat(stringVotoClean) || 0;
+    const materia        = v.desMateria ?? v.materia ?? "—";
+    const tipo           = v.codTipo ?? v.tipoValutazione ?? "Scritto";
+    const giudizio       = v.desCommento ?? v.descrizioneProva ?? "";
+    const docente        = v.docente ?? "";
 
     await client.pages.create({
       parent: { database_id: databaseId },
@@ -146,7 +157,7 @@ export async function seedVotiRecords(
         materia:   { title:     [{ text: { content: materia } }] },
         voto:      { number:    votoNum },
         datGiorno: { date:      buildDate(data) ?? null },
-        tipo:      { select:    { name: sanitizeSelectName(tipo) } }, // Sanitizza anche qui per sicurezza
+        tipo:      { select:    { name: sanitizeSelectName(tipo) } },
         giudizio:  { rich_text: [{ text: { content: giudizio } }] },
         docente:   { rich_text: [{ text: { content: docente } }] },
         pk:        { rich_text: [{ text: { content: pk } }] },
@@ -163,17 +174,20 @@ export async function seedAssenzeRecords(
   databaseId: string,
   appello: AnyRecord[]
 ) {
+  const oneMonth   = oneMonthAgoISO();
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
+
   for (const a of appello ?? []) {
-    const pk = a.pk ?? a.pkAssenza ?? a.id ?? JSON.stringify(a);
+    const pk   = a.pk ?? a.pkAssenza ?? a.id ?? JSON.stringify(a);
+    const data = a.data ?? a.datEvento ?? "";
+
+    if (!data) continue;
+    if (data < oneMonth) continue; // ← ignora oltre 1 mese fa
     if (existingPks.has(pk)) continue;
 
-    const data  = a.data ?? a.datEvento ?? "";
     const tipo  = a.codEvento ?? a.descrizione ?? "Assenza";
     const giust = a.giustificata === true || a.daGiustificare === false;
     const note  = a.nota ?? a.commentoGiustificazione ?? "";
-
-    if (!data) continue;
 
     await client.pages.create({
       parent: { database_id: databaseId },
@@ -196,14 +210,18 @@ export async function seedRegistroRecords(
   databaseId: string,
   registro: AnyRecord[]
 ) {
+  const oneMonth   = oneMonthAgoISO();
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
+
   for (const r of registro ?? []) {
-    const pk = r.pk ?? r.pkRegistro ?? r.id ?? JSON.stringify(r);
+    const pk   = r.pk ?? r.pkRegistro ?? r.id ?? JSON.stringify(r);
+    const data = r.datGiorno ?? r.datEvento ?? "";
+
+    if (data < oneMonth) continue; // ← ignora oltre 1 mese fa
     if (existingPks.has(pk)) continue;
 
     const argomento = r.attivita ?? r.argomento ?? "—";
-    const materia   = sanitizeSelectName(r.materia ?? r.desMateria ?? "—"); // FIX: NO VIRGOLE QUI
-    const data      = r.datGiorno ?? r.datEvento ?? "";
+    const materia   = sanitizeSelectName(r.materia ?? r.desMateria ?? "—");
     const docente   = r.docente ?? r.pkDocente ?? "";
     const attivita  = r.attivita ?? "";
 
@@ -229,14 +247,18 @@ export async function seedBachecaRecords(
   databaseId: string,
   bacheca: AnyRecord[]
 ) {
+  const oneMonth   = oneMonthAgoISO();
   const existingPks = await loadExistingTitles(client, databaseId, "pk");
+
   for (const b of bacheca ?? []) {
-    const pk = b.pk ?? b.pkBacheca ?? b.id ?? JSON.stringify(b);
+    const pk   = b.pk ?? b.pkBacheca ?? b.id ?? JSON.stringify(b);
+    const data = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? "";
+
+    if (data < oneMonth) continue; // ← ignora oltre 1 mese fa
     if (existingPks.has(pk)) continue;
 
-    const oggetto  = b.desOggetto ?? b.oggetto ?? b.titolo ?? "Comunicazione";
-    const data     = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? "";
-    const msg      = b.desMessaggio ?? b.messaggio ?? b.testo ?? "";
+    const oggetto = b.desOggetto ?? b.oggetto ?? b.titolo ?? "Comunicazione";
+    const msg     = b.desMessaggio ?? b.messaggio ?? b.testo ?? "";
 
     await client.pages.create({
       parent: { database_id: databaseId },
