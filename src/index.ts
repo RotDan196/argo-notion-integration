@@ -11,7 +11,6 @@ import {
   seedVotiRecords, seedMediaVotiRecords,
   seedAssenzeRecords, seedRegistroRecords, seedBachecaRecords,
 } from "./seed.js";
-import { organizeWithAI } from "./ai.js";
 import { ok } from "node:assert";
 
 const NOTION_TOKEN       = process.env.NOTION_TOKEN;
@@ -33,8 +32,8 @@ try {
   console.log("📦 Setup database Notion...");
   const [
     promemoria_id, compiti_id,
-    voti_id, medie_id,
-    assenze_id, registro_id, bacheca_id,
+    voti_id,       medie_id,
+    assenze_id,    registro_id,  bacheca_id,
   ] = await Promise.all([
     setupPromemoriaDatabase(notionClient, NOTION_PARENT_PAGE),
     setupCompitiDatabase(notionClient, NOTION_PARENT_PAGE),
@@ -66,26 +65,6 @@ try {
 
   console.log("📢 Sync Bacheca...");
   await seedBachecaRecords(notionClient, bacheca_id, dash.bacheca as any);
-
-  console.log("\n🤖 Generazione riepilogo AI...");
-  const aiSummary = await organizeWithAI({
-    voti:     dash.voti,
-    compiti:  dash.promemoria,
-    assenze:  dash.appello,
-    registro: dash.registro,
-    bacheca:  dash.bacheca,
-  });
-
-  await notionClient.pages.create({
-    parent: { type: "page_id", page_id: NOTION_PARENT_PAGE },
-    properties: {
-      title: { title: [{ text: { content: `🤖 Riepilogo AI — ${new Date().toLocaleDateString("it-IT")}` } }] },
-    },
-    children: [{
-      object: "block", type: "paragraph",
-      paragraph: { rich_text: [{ type: "text", text: { content: aiSummary } }] },
-    }],
-  });
 
   await argoClient.logOut();
   console.log("\n✅ Sync completato!");
