@@ -2,32 +2,22 @@ name: Argo Bridge Sync Notion
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: '0 */3 * * *'
   workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Run sync script
-        run: npm run sync
+          node-version: '20'
+      - run: npm ci
+      - run: npm run sync
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
           NOME_UTENTE: ${{ secrets.NOME_UTENTE }}
           PASSWORD: ${{ secrets.PASSWORD }}
           CODICE_SCUOLA: ${{ secrets.CODICE_SCUOLA }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-
