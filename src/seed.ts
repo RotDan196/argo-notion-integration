@@ -151,7 +151,6 @@ export async function seedVotiRecords(
   databaseId: string,
   voti: AnyRecord[]
 ) {
-  // Dedup su "voce" = "MATERIA — YYYY-MM-DD" (unico per ogni voto senza pk)
   const existingVoci = await loadExistingTitles(client, databaseId, "voce");
 
   for (const v of voti ?? []) {
@@ -161,8 +160,7 @@ export async function seedVotiRecords(
     const materia  = v.desMateria ?? v.materia ?? "—";
     const votoRaw  = v.valore ?? v.descrizioneVoto ?? 0;
     const votoNum  = parseFloat(String(votoRaw).replace("+", ".25").replace("-", ".75")) || 0;
-    const voce     = `${materia} — ${data}`;    // chiave di dedup leggibile
-
+    const voce     = `${materia} — ${data}`;
     if (existingVoci.has(voce)) continue;
 
     const tipo     = mapTipoVoto(v.codTipo ?? v.tipoValutazione ?? "");
@@ -206,7 +204,7 @@ export async function seedMediaVotiRecords(
     byMateria.get(materia)!.push(num);
   }
 
-  // Archivia vecchi record e ricrea (sempre aggiornato)
+  // Archivia e ricrea ad ogni sync così le medie sono sempre aggiornate
   let cursor: string | undefined;
   do {
     const res = await client.databases.query({ database_id: databaseId, start_cursor: cursor });
@@ -238,7 +236,6 @@ export async function seedAssenzeRecords(
   databaseId: string,
   appello: AnyRecord[]
 ) {
-  // Dedup su "voce" = "YYYY-MM-DD — Tipo"
   const existingVoci = await loadExistingTitles(client, databaseId, "voce");
 
   for (const a of appello ?? []) {
@@ -247,7 +244,6 @@ export async function seedAssenzeRecords(
 
     const tipo  = mapTipoAssenza(a.codEvento ?? "");
     const voce  = `${data} — ${tipo}`;
-
     if (existingVoci.has(voce)) continue;
 
     const giust = a.giustificata === true || a.daGiustificare === false;
@@ -274,7 +270,6 @@ export async function seedRegistroRecords(
   databaseId: string,
   registro: AnyRecord[]
 ) {
-  // Dedup su "argomento" (titolo)
   const existingArgomenti = await loadExistingTitles(client, databaseId, "argomento");
 
   for (const r of registro ?? []) {
@@ -320,49 +315,20 @@ export async function seedBachecaRecords(
 
     const msg = b.desMessaggio ?? b.messaggio ?? b.testo ?? "";
 
-    // Raccoglie tutti i link allegati presenti nell'oggetto Argo
-    const allegati: string[] = [];
-    const allegatiRaw = b.listaAllegati ?? b.allegati ?? b.files ?? [];
-    for (const a of allegatiRaw) {
-      const url = a.url ?? a.desUrl ?? a.link ?? a.path ?? null;
-      const nome = a.nome ?? a.desNome ?? a.fileName ?? a.name ?? url ?? "";
-      if (url) allegati.push(`${nome}: ${url}`);
-    }
-    // Fallback: campi url diretti sull'oggetto bacheca
-    if (allegati.length === 0 && (b.desUrl ?? b.url)) {
-      allegati.push(b.desUrl ?? b.url);
-    }
-    const allegatiStr = allegati.join("\n");
-
-    // Costruisce i blocchi figli: prima il testo, poi ogni allegato come link
-    const children: any[] = [];
-    if (msg) {
-      children.push({
-        object: "block", type: "paragraph",
-        paragraph: { rich_text: [{ type: "text", text: { content: msg } }] },
-      });
-    }
-    for (const a of allegatiRaw) {
-      const url  = a.url ?? a.desUrl ?? a.link ?? a.path ?? null;
-      const nome = a.nome ?? a.desNome ?? a.fileName ?? a.name ?? "Allegato";
-      if (!url) continue;
-      children.push({
-        object: "block", type: "bookmark",
-        bookmark: { url, caption: [{ type: "text", text: { content: nome } }] },
-      });
-    }
-
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
         oggetto:   { title:    [{ text: { content: oggetto } }] },
         datGiorno: { date:     buildDate(data) ?? null },
         letta:     { checkbox: false },
-        allegati:  { rich_text:[{ text: { content: allegatiStr } }] },
+        messaggio: { rich_text:[{ text: { content: msg } }] },
       },
-      children: children.length > 0 ? children : undefined,
+      children: msg ? [{
+        object: "block", type: "paragraph",
+        paragraph: { rich_text: [{ type: "text", text: { content: msg } }] },
+      }] : undefined,
     });
-    console.log(`Bacheca "${oggetto}" aggiunta${allegati.length > 0 ? ` (${allegati.length} allegati)` : ""}.`);
+    console.log(`Bacheca "${oggetto}" aggiunta.`);
     existingOggetti.add(oggetto);
   }
 }
