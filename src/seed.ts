@@ -204,7 +204,6 @@ export async function seedMediaVotiRecords(
     byMateria.get(materia)!.push(num);
   }
 
-  // Archivia e ricrea ad ogni sync così le medie sono sempre aggiornate
   let cursor: string | undefined;
   do {
     const res = await client.databases.query({ database_id: databaseId, start_cursor: cursor });
@@ -273,7 +272,7 @@ export async function seedRegistroRecords(
   const existingArgomenti = await loadExistingTitles(client, databaseId, "argomento");
 
   for (const r of registro ?? []) {
-    const data      = r.datGiorno ?? r.datEvento ?? "";
+    const data     = r.datGiorno ?? r.datEvento ?? "";
     if (data < ONE_MONTH_AGO) continue;
 
     const attivita  = r.attivita ?? "";
@@ -304,24 +303,33 @@ export async function seedBachecaRecords(
   databaseId: string,
   bacheca: AnyRecord[]
 ) {
+  // Log campi del primo elemento per debug
+  if (bacheca?.length > 0) {
+    console.log("🔍 Campi bacheca:", Object.keys(bacheca[0]));
+    console.log("🔍 Esempio bacheca[0]:", JSON.stringify(bacheca[0], null, 2));
+  }
+
   const existingOggetti = await loadExistingTitles(client, databaseId, "oggetto");
 
   for (const b of bacheca ?? []) {
-    const data    = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? "";
-    if (data < ONE_MONTH_AGO) continue;
-
-    const oggetto = truncateTitle(b.desOggetto ?? b.oggetto ?? b.titolo ?? "Comunicazione", 100);
+    const oggetto = truncateTitle(
+      b.desOggetto ?? b.oggetto ?? b.titolo ?? b.desTitolo ?? "Comunicazione",
+      100
+    );
     if (existingOggetti.has(oggetto)) continue;
 
-    const msg = b.desMessaggio ?? b.messaggio ?? b.testo ?? "";
+    // Nessun filtro data per la bacheca: le comunicazioni scolastiche
+    // possono non avere una data recente o potrebbero non averla affatto
+    const data = b.datPubblicazione ?? b.datGiorno ?? b.data ?? b.datEvento ?? null;
+    const msg  = b.desMessaggio ?? b.messaggio ?? b.testo ?? b.contenuto ?? "";
 
     await client.pages.create({
       parent: { database_id: databaseId },
       properties: {
         oggetto:   { title:    [{ text: { content: oggetto } }] },
-        datGiorno: { date:     buildDate(data) ?? null },
+        datGiorno: { date:     data ? (buildDate(data) ?? null) : null },
         letta:     { checkbox: false },
-        messaggio: { rich_text:[{ text: { content: msg } }] },
+        messaggio: { rich_text:[{ text: { content: truncateTitle(msg, 2000) } }] },
       },
       children: msg ? [{
         object: "block", type: "paragraph",
